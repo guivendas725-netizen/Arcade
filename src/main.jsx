@@ -8,6 +8,8 @@ const sizes = ["P", "M", "G", "GG"];
 const USERS_KEY = "arcade_users";
 const CURRENT_USER_KEY = "arcade_current_user";
 const ORDERS_KEY = "arcade_orders";
+const OWNER_ACCESS_KEY = "arcade_owner_access";
+const OWNER_PIN = "ARCADE2026";
 const orderStatuses = ["Aguardando confirmacao", "Confirmado", "Em producao", "Enviado", "Entregue"];
 
 const products = [
@@ -71,6 +73,11 @@ const buildWhatsappUrl = (cart, user, orderId) => {
   )}`;
 };
 
+const buildOwnerWhatsappUrl = (order) =>
+  `https://wa.me/${order.userPhone.replace(/\D/g, "")}?text=${encodeURIComponent(
+    `Ola, ${order.userName}. Seu pedido ${order.id} da ARCADE.CO esta com status: ${order.status}.`
+  )}`;
+
 const getRoute = () => {
   const hash = window.location.hash.replace("#", "");
   if (!hash || hash === "/") return { page: "home" };
@@ -79,7 +86,7 @@ const getRoute = () => {
   if (hash === "sobre") return { page: "about" };
   if (hash === "login") return { page: "login" };
   if (hash === "conta") return { page: "account" };
-  if (hash === "gestao") return { page: "admin" };
+  if (hash === "painel-lojista" || hash === "gestao") return { page: "admin" };
   return { page: "home" };
 };
 
@@ -118,7 +125,6 @@ function Header({ cartCount, currentUser, onCartOpen, onLogout }) {
           <button type="button" onClick={() => goTo(currentUser ? "conta" : "login")}>
             {currentUser ? "Minha conta" : "Login"}
           </button>
-          <button type="button" onClick={() => goTo("gestao")}>Gestao</button>
         </nav>
 
         {currentUser && (
@@ -145,7 +151,6 @@ function Header({ cartCount, currentUser, onCartOpen, onLogout }) {
         <button type="button" onClick={() => { setMenuOpen(false); goTo(currentUser ? "conta" : "login"); }}>
           {currentUser ? "Minha conta" : "Login"}
         </button>
-        <button type="button" onClick={() => { setMenuOpen(false); goTo("gestao"); }}>Gestao</button>
         {currentUser && <button type="button" onClick={onLogout}>Sair</button>}
       </div>
     </header>
@@ -579,36 +584,139 @@ function AccountPage({ currentUser, orders }) {
   );
 }
 
-function AdminOrdersPage({ orders, onStatusChange }) {
+function OwnerPanelPage({ orders, onStatusChange }) {
+  const [unlocked, setUnlocked] = useState(() => readStorage(OWNER_ACCESS_KEY, false));
+  const [pin, setPin] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Todos");
+  const [error, setError] = useState("");
+
+  const openPanel = (event) => {
+    event.preventDefault();
+    if (pin.trim() !== OWNER_PIN) {
+      setError("Codigo incorreto.");
+      return;
+    }
+    setUnlocked(true);
+    writeStorage(OWNER_ACCESS_KEY, true);
+  };
+
+  const closePanel = () => {
+    setUnlocked(false);
+    writeStorage(OWNER_ACCESS_KEY, false);
+  };
+
+  const filteredOrders = orders.filter((order) => {
+    const haystack = `${order.id} ${order.userName} ${order.userEmail} ${order.userPhone} ${order.userAddress}`.toLowerCase();
+    const matchesQuery = haystack.includes(query.trim().toLowerCase());
+    const matchesStatus = statusFilter === "Todos" || order.status === statusFilter;
+    return matchesQuery && matchesStatus;
+  });
+
+  const statusTotals = orderStatuses.map((status) => ({
+    status,
+    total: orders.filter((order) => order.status === status).length,
+  }));
+
+  if (!unlocked) {
+    return (
+      <section className="owner-login page-shell">
+        <form className="auth-card owner-access-card" onSubmit={openPanel}>
+          <div>
+            <p>Painel do lojista</p>
+            <h1>Acesso privado.</h1>
+            <span>Entre com seu codigo para atualizar o acompanhamento dos clientes.</span>
+          </div>
+          <label>
+            Codigo de acesso
+            <input value={pin} onChange={(event) => setPin(event.target.value)} placeholder="ARCADE2026" />
+          </label>
+          {error && <p className="form-message">{error}</p>}
+          <button className="add-button" type="submit">Entrar no painel</button>
+        </form>
+      </section>
+    );
+  }
+
   return (
-    <section className="admin-page page-shell">
-      <div className="account-head">
+    <section className="owner-panel page-shell">
+      <div className="owner-panel-head">
         <div>
-          <p>Gestao ARCADE.CO</p>
-          <h1>Atualizar pedidos</h1>
-          <span>Use essa tela para mudar o status depois que o pedido for confirmado ou enviado.</span>
+          <p>Painel do lojista</p>
+          <h1>Acompanhamento de pedidos</h1>
+          <span>Pedidos confirmados pelo checkout aparecem aqui para voce atualizar a situacao de cada cliente.</span>
         </div>
+        <button className="filter-button" type="button" onClick={closePanel}>Bloquear painel</button>
       </div>
 
-      <div className="orders-panel">
-        {!orders.length && <p className="form-message">Nenhum pedido criado ainda.</p>}
-        {orders.map((order) => (
-          <div className="order-card admin-order" key={order.id}>
-            <div className="order-top">
-              <div>
-                <strong>{order.id}</strong>
-                <span>{order.userName} · {order.userPhone}</span>
+      <div className="owner-stats">
+        <article>
+          <span>Total</span>
+          <strong>{orders.length}</strong>
+        </article>
+        {statusTotals.map((entry) => (
+          <article key={entry.status}>
+            <span>{entry.status}</span>
+            <strong>{entry.total}</strong>
+          </article>
+        ))}
+      </div>
+
+      <div className="owner-toolbar">
+        <label>
+          Buscar cliente ou pedido
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome, telefone, e-mail ou codigo" />
+        </label>
+        <label>
+          Filtrar por status
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option>Todos</option>
+            {orderStatuses.map((status) => <option key={status}>{status}</option>)}
+          </select>
+        </label>
+      </div>
+
+      <div className="owner-orders">
+        {!filteredOrders.length && <p className="form-message">Nenhum pedido encontrado.</p>}
+        {filteredOrders.map((order) => (
+          <article className="owner-order-card" key={order.id}>
+            <div className="owner-order-main">
+              <div className="order-top">
+                <div>
+                  <strong>{order.id}</strong>
+                  <span>{new Date(order.createdAt).toLocaleString("pt-BR")}</span>
+                </div>
+                <b>{formatBRL(order.total)}</b>
               </div>
-              <b>{formatBRL(order.total)}</b>
+
+              <div className="customer-box">
+                <p><strong>Cliente:</strong> {order.userName}</p>
+                <p><strong>E-mail:</strong> {order.userEmail}</p>
+                <p><strong>WhatsApp:</strong> {order.userPhone}</p>
+                <p><strong>Entrega:</strong> {order.userAddress}</p>
+              </div>
+
+              <ul>
+                {order.items.map((item) => {
+                  const product = products.find((entry) => entry.id === item.id);
+                  return <li key={`${order.id}-${item.id}-${item.size}`}>{product.name} · tamanho {item.size} · qtd {item.qty}</li>;
+                })}
+              </ul>
             </div>
-            <label>
-              Status do pedido
-              <select value={order.status} onChange={(event) => onStatusChange(order.id, event.target.value)}>
-                {orderStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
-              </select>
-            </label>
-            <OrderProgress status={order.status} />
-          </div>
+
+            <aside className="owner-order-actions">
+              <label>
+                Situacao do pedido
+                <select value={order.status} onChange={(event) => onStatusChange(order.id, event.target.value)}>
+                  {orderStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </label>
+              <OrderProgress status={order.status} />
+              <a className="checkout-button" href={buildOwnerWhatsappUrl(order)} target="_blank" rel="noreferrer">
+                Avisar cliente
+              </a>
+            </aside>
+          </article>
         ))}
       </div>
     </section>
@@ -705,6 +813,7 @@ function App() {
       userEmail: currentUser.email,
       userName: currentUser.name,
       userPhone: currentUser.phone,
+      userAddress: currentUser.address,
       status: "Aguardando confirmacao",
       total,
       items: cart,
@@ -731,7 +840,7 @@ function App() {
     if (route.page === "about") return <AboutPage />;
     if (route.page === "login") return <AuthPage onAuth={loginUser} />;
     if (route.page === "account") return <AccountPage currentUser={currentUser} orders={orders} />;
-    if (route.page === "admin") return <AdminOrdersPage orders={orders} onStatusChange={updateOrderStatus} />;
+    if (route.page === "admin") return <OwnerPanelPage orders={orders} onStatusChange={updateOrderStatus} />;
     return <HomePage />;
   };
 
