@@ -10,7 +10,7 @@ const CURRENT_USER_KEY = "arcade_current_user";
 const ORDERS_KEY = "arcade_orders";
 const OWNER_ACCESS_KEY = "arcade_owner_access";
 const OWNER_EMAIL = "admin@arcade.co";
-const OWNER_PASSWORD = "Arcade2026";
+const OWNER_PASSWORD = "Arcadeco3295";
 const orderStatuses = ["Aguardando confirmacao", "Confirmado", "Em producao", "Enviado", "Entregue"];
 
 const products = [
@@ -644,7 +644,7 @@ function OwnerPanelPage({ orders, onStatusChange }) {
               type="password"
               value={credentials.password}
               onChange={(event) => setCredentials((current) => ({ ...current, password: event.target.value }))}
-              placeholder="Arcade2026"
+              placeholder="Arcadeco3295"
             />
           </label>
           {error && <p className="form-message">{error}</p>}
