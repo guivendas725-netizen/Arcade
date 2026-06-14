@@ -9,7 +9,8 @@ const USERS_KEY = "arcade_users";
 const CURRENT_USER_KEY = "arcade_current_user";
 const ORDERS_KEY = "arcade_orders";
 const OWNER_ACCESS_KEY = "arcade_owner_access";
-const OWNER_PIN = "ARCADE2026";
+const OWNER_EMAIL = "admin@arcade.co";
+const OWNER_PASSWORD = "Arcade2026";
 const orderStatuses = ["Aguardando confirmacao", "Confirmado", "Em producao", "Enviado", "Entregue"];
 
 const products = [
@@ -586,15 +587,16 @@ function AccountPage({ currentUser, orders }) {
 
 function OwnerPanelPage({ orders, onStatusChange }) {
   const [unlocked, setUnlocked] = useState(() => readStorage(OWNER_ACCESS_KEY, false));
-  const [pin, setPin] = useState("");
+  const [credentials, setCredentials] = useState({ email: "", password: "" });
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [error, setError] = useState("");
 
   const openPanel = (event) => {
     event.preventDefault();
-    if (pin.trim() !== OWNER_PIN) {
-      setError("Codigo incorreto.");
+    const email = credentials.email.trim().toLowerCase();
+    if (email !== OWNER_EMAIL || credentials.password !== OWNER_PASSWORD) {
+      setError("Login ou senha incorretos.");
       return;
     }
     setUnlocked(true);
@@ -624,12 +626,26 @@ function OwnerPanelPage({ orders, onStatusChange }) {
         <form className="auth-card owner-access-card" onSubmit={openPanel}>
           <div>
             <p>Painel do lojista</p>
-            <h1>Acesso privado.</h1>
-            <span>Entre com seu codigo para atualizar o acompanhamento dos clientes.</span>
+            <h1>Login do lojista.</h1>
+            <span>Entre com e-mail e senha para atualizar o acompanhamento dos clientes.</span>
           </div>
           <label>
-            Codigo de acesso
-            <input value={pin} onChange={(event) => setPin(event.target.value)} placeholder="ARCADE2026" />
+            E-mail
+            <input
+              type="email"
+              value={credentials.email}
+              onChange={(event) => setCredentials((current) => ({ ...current, email: event.target.value }))}
+              placeholder="admin@arcade.co"
+            />
+          </label>
+          <label>
+            Senha
+            <input
+              type="password"
+              value={credentials.password}
+              onChange={(event) => setCredentials((current) => ({ ...current, password: event.target.value }))}
+              placeholder="Arcade2026"
+            />
           </label>
           {error && <p className="form-message">{error}</p>}
           <button className="add-button" type="submit">Entrar no painel</button>
