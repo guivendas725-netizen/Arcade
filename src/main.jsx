@@ -9,7 +9,7 @@ const USERS_KEY = "arcade_users";
 const CURRENT_USER_KEY = "arcade_current_user";
 const ORDERS_KEY = "arcade_orders";
 const OWNER_ACCESS_KEY = "arcade_owner_access";
-const OWNER_EMAIL = "admin@arcade.co";
+const OWNER_EMAIL = "arcadecooficial@gmail.com";
 const OWNER_PASSWORD = "Arcadeco3295";
 const orderStatuses = ["Aguardando confirmacao", "Confirmado", "Em producao", "Enviado", "Entregue"];
 
@@ -635,7 +635,7 @@ function OwnerPanelPage({ orders, onStatusChange }) {
               type="email"
               value={credentials.email}
               onChange={(event) => setCredentials((current) => ({ ...current, email: event.target.value }))}
-              placeholder="admin@arcade.co"
+              placeholder="E-mail"
             />
           </label>
           <label>
@@ -644,7 +644,7 @@ function OwnerPanelPage({ orders, onStatusChange }) {
               type="password"
               value={credentials.password}
               onChange={(event) => setCredentials((current) => ({ ...current, password: event.target.value }))}
-              placeholder="Arcadeco3295"
+              placeholder="Senha"
             />
           </label>
           {error && <p className="form-message">{error}</p>}
