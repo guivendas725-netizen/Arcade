@@ -482,8 +482,12 @@ function AuthPage({ onAuth }) {
                 <input value={form.phone} onChange={(event) => updateField("phone", event.target.value)} />
               </label>
               <label>
-                Endereco de entrega
-                <input value={form.address} onChange={(event) => updateField("address", event.target.value)} />
+                Local de envio do pedido
+                <input
+                  value={form.address}
+                  onChange={(event) => updateField("address", event.target.value)}
+                  placeholder="Rua, numero, bairro, cidade e ponto de referencia"
+                />
               </label>
             </>
           )}
@@ -519,7 +523,14 @@ function OrderProgress({ status }) {
   );
 }
 
-function AccountPage({ currentUser, orders }) {
+function AccountPage({ currentUser, orders, onUpdateShipping }) {
+  const [shippingAddress, setShippingAddress] = useState(currentUser?.address || "");
+  const [shippingMessage, setShippingMessage] = useState("");
+
+  useEffect(() => {
+    setShippingAddress(currentUser?.address || "");
+  }, [currentUser]);
+
   if (!currentUser) {
     return (
       <section className="auth-page page-shell">
@@ -533,6 +544,17 @@ function AccountPage({ currentUser, orders }) {
   }
 
   const userOrders = orders.filter((order) => order.userEmail === currentUser.email);
+
+  const saveShippingAddress = (event) => {
+    event.preventDefault();
+    const address = shippingAddress.trim();
+    if (!address) {
+      setShippingMessage("Preencha o local de envio para finalizar pedidos.");
+      return;
+    }
+    onUpdateShipping(address);
+    setShippingMessage("Local de envio salvo na sua conta.");
+  };
 
   return (
     <section className="account-page page-shell">
@@ -550,7 +572,21 @@ function AccountPage({ currentUser, orders }) {
           <h2>Dados salvos</h2>
           <p><strong>Nome:</strong> {currentUser.name}</p>
           <p><strong>WhatsApp:</strong> {currentUser.phone}</p>
-          <p><strong>Entrega:</strong> {currentUser.address}</p>
+          <p><strong>Entrega:</strong> {currentUser.address || "Ainda nao informado"}</p>
+
+          <form className="shipping-form" onSubmit={saveShippingAddress}>
+            <label>
+              Local de envio do pedido
+              <textarea
+                value={shippingAddress}
+                onChange={(event) => setShippingAddress(event.target.value)}
+                placeholder="Rua, numero, bairro, cidade e ponto de referencia"
+                rows={5}
+              />
+            </label>
+            {shippingMessage && <p className="form-message">{shippingMessage}</p>}
+            <button className="add-button" type="submit">Salvar local de envio</button>
+          </form>
         </article>
 
         <article className="orders-panel">
@@ -805,6 +841,18 @@ function App() {
     writeStorage(CURRENT_USER_KEY, user);
   };
 
+  const updateShippingAddress = (address) => {
+    const nextUser = { ...currentUser, address: address.trim() };
+    const users = readStorage(USERS_KEY, []);
+    const userExists = users.some((user) => user.email === nextUser.email);
+    const nextUsers = userExists
+      ? users.map((user) => (user.email === nextUser.email ? nextUser : user))
+      : [...users, nextUser];
+    setCurrentUser(nextUser);
+    writeStorage(CURRENT_USER_KEY, nextUser);
+    writeStorage(USERS_KEY, nextUsers);
+  };
+
   const logoutUser = () => {
     setCurrentUser(null);
     localStorage.removeItem(CURRENT_USER_KEY);
@@ -818,6 +866,12 @@ function App() {
       goTo("login");
       return;
     }
+    if (!currentUser.address?.trim()) {
+      setCartOpen(false);
+      window.alert("Preencha o local de envio do pedido na sua conta antes de finalizar.");
+      goTo("conta");
+      return;
+    }
 
     const orderId = makeOrderId();
     const total = cart.reduce((sum, item) => {
@@ -829,7 +883,7 @@ function App() {
       userEmail: currentUser.email,
       userName: currentUser.name,
       userPhone: currentUser.phone,
-      userAddress: currentUser.address,
+      userAddress: currentUser.address.trim(),
       status: "Aguardando confirmacao",
       total,
       items: cart,
@@ -855,7 +909,7 @@ function App() {
     if (route.page === "product") return <ProductPage id={route.id} onAdd={addToCart} />;
     if (route.page === "about") return <AboutPage />;
     if (route.page === "login") return <AuthPage onAuth={loginUser} />;
-    if (route.page === "account") return <AccountPage currentUser={currentUser} orders={orders} />;
+    if (route.page === "account") return <AccountPage currentUser={currentUser} orders={orders} onUpdateShipping={updateShippingAddress} />;
     if (route.page === "admin") return <OwnerPanelPage orders={orders} onStatusChange={updateOrderStatus} />;
     return <HomePage />;
   };

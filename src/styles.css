@@ -33,7 +33,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -909,7 +910,9 @@ a {
 
 .auth-form,
 .auth-form label,
-.admin-order label {
+.admin-order label,
+.shipping-form,
+.shipping-form label {
   display: grid;
   gap: 8px;
 }
@@ -920,6 +923,7 @@ a {
 
 .auth-form label,
 .admin-order label,
+.shipping-form label,
 .owner-access-card label,
 .owner-toolbar label,
 .owner-order-actions label {
@@ -931,6 +935,7 @@ a {
 }
 
 .auth-form input,
+.shipping-form textarea,
 .admin-order select,
 .owner-access-card input,
 .owner-toolbar input,
@@ -943,6 +948,19 @@ a {
   background: var(--soft);
   border: 1px solid var(--line);
   outline: 0;
+}
+
+.shipping-form {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.shipping-form textarea {
+  min-height: 132px;
+  resize: vertical;
+  padding: 14px;
+  line-height: 1.5;
 }
 
 .form-message {
