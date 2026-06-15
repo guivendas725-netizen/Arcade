@@ -79,6 +79,14 @@ const buildOwnerWhatsappUrl = (order) =>
     `Ola, ${order.userName}. Seu pedido ${order.id} da ARCADE.CO esta com status: ${order.status}.`
   )}`;
 
+const missingDeliveryFields = (user) => {
+  const fields = [];
+  if (!user?.name?.trim()) fields.push("nome completo");
+  if (!user?.phone?.trim()) fields.push("WhatsApp");
+  if (!user?.address?.trim()) fields.push("local de envio");
+  return fields;
+};
+
 const getRoute = () => {
   const hash = window.location.hash.replace("#", "");
   if (!hash || hash === "/") return { page: "home" };
@@ -131,7 +139,7 @@ function Header({ cartCount, currentUser, onCartOpen, onLogout }) {
         {currentUser && (
           <button className="account-chip" type="button" onClick={onLogout} aria-label="Sair da conta">
             <User size={16} />
-            <span>{currentUser.name.split(" ")[0]}</span>
+            <span>{currentUser.name?.split(" ")[0] || "Cliente"}</span>
             <LogOut size={15} />
           </button>
         )}
@@ -523,12 +531,20 @@ function OrderProgress({ status }) {
   );
 }
 
-function AccountPage({ currentUser, orders, onUpdateShipping }) {
-  const [shippingAddress, setShippingAddress] = useState(currentUser?.address || "");
-  const [shippingMessage, setShippingMessage] = useState("");
+function AccountPage({ currentUser, orders, onUpdateDelivery }) {
+  const [deliveryForm, setDeliveryForm] = useState({
+    name: currentUser?.name || "",
+    phone: currentUser?.phone || "",
+    address: currentUser?.address || "",
+  });
+  const [deliveryMessage, setDeliveryMessage] = useState("");
 
   useEffect(() => {
-    setShippingAddress(currentUser?.address || "");
+    setDeliveryForm({
+      name: currentUser?.name || "",
+      phone: currentUser?.phone || "",
+      address: currentUser?.address || "",
+    });
   }, [currentUser]);
 
   if (!currentUser) {
@@ -544,16 +560,27 @@ function AccountPage({ currentUser, orders, onUpdateShipping }) {
   }
 
   const userOrders = orders.filter((order) => order.userEmail === currentUser.email);
+  const missingFields = missingDeliveryFields(currentUser);
+  const deliveryIsComplete = missingFields.length === 0;
 
-  const saveShippingAddress = (event) => {
+  const updateDeliveryField = (field, value) => {
+    setDeliveryForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const saveDeliveryInfo = (event) => {
     event.preventDefault();
-    const address = shippingAddress.trim();
-    if (!address) {
-      setShippingMessage("Preencha o local de envio para finalizar pedidos.");
+    const nextDelivery = {
+      name: deliveryForm.name.trim(),
+      phone: deliveryForm.phone.trim(),
+      address: deliveryForm.address.trim(),
+    };
+    const missing = missingDeliveryFields(nextDelivery);
+    if (missing.length) {
+      setDeliveryMessage(`Preencha: ${missing.join(", ")}.`);
       return;
     }
-    onUpdateShipping(address);
-    setShippingMessage("Local de envio salvo na sua conta.");
+    onUpdateDelivery(nextDelivery);
+    setDeliveryMessage("Informacoes de entrega salvas na sua conta.");
   };
 
   return (
@@ -561,7 +588,7 @@ function AccountPage({ currentUser, orders, onUpdateShipping }) {
       <div className="account-head">
         <div>
           <p>Minha conta</p>
-          <h1>Ola, {currentUser.name.split(" ")[0]}.</h1>
+          <h1>Ola, {currentUser.name?.split(" ")[0] || "Cliente"}.</h1>
           <span>{currentUser.email} · {currentUser.phone}</span>
         </div>
         <button className="shop-link" type="button" onClick={() => goTo("camisetas")}>Comprar mais</button>
@@ -569,23 +596,44 @@ function AccountPage({ currentUser, orders, onUpdateShipping }) {
 
       <div className="profile-grid">
         <article className="profile-card">
-          <h2>Dados salvos</h2>
+          <h2>Entrega do pedido</h2>
+          {!deliveryIsComplete && (
+            <p className="delivery-warning">
+              Complete seus dados de entrega antes de finalizar qualquer pedido.
+            </p>
+          )}
           <p><strong>Nome:</strong> {currentUser.name}</p>
           <p><strong>WhatsApp:</strong> {currentUser.phone}</p>
           <p><strong>Entrega:</strong> {currentUser.address || "Ainda nao informado"}</p>
 
-          <form className="shipping-form" onSubmit={saveShippingAddress}>
+          <form className="shipping-form" onSubmit={saveDeliveryInfo}>
+            <label>
+              Nome completo
+              <input
+                value={deliveryForm.name}
+                onChange={(event) => updateDeliveryField("name", event.target.value)}
+                placeholder="Nome de quem vai receber"
+              />
+            </label>
+            <label>
+              WhatsApp
+              <input
+                value={deliveryForm.phone}
+                onChange={(event) => updateDeliveryField("phone", event.target.value)}
+                placeholder="Numero para contato da entrega"
+              />
+            </label>
             <label>
               Local de envio do pedido
               <textarea
-                value={shippingAddress}
-                onChange={(event) => setShippingAddress(event.target.value)}
-                placeholder="Rua, numero, bairro, cidade e ponto de referencia"
+                value={deliveryForm.address}
+                onChange={(event) => updateDeliveryField("address", event.target.value)}
+                placeholder="Rua, numero, bairro, cidade, CEP e ponto de referencia"
                 rows={5}
               />
             </label>
-            {shippingMessage && <p className="form-message">{shippingMessage}</p>}
-            <button className="add-button" type="submit">Salvar local de envio</button>
+            {deliveryMessage && <p className="form-message">{deliveryMessage}</p>}
+            <button className="add-button" type="submit">Salvar dados de entrega</button>
           </form>
         </article>
 
@@ -841,8 +889,13 @@ function App() {
     writeStorage(CURRENT_USER_KEY, user);
   };
 
-  const updateShippingAddress = (address) => {
-    const nextUser = { ...currentUser, address: address.trim() };
+  const updateDeliveryInfo = (deliveryInfo) => {
+    const nextUser = {
+      ...currentUser,
+      name: deliveryInfo.name.trim(),
+      phone: deliveryInfo.phone.trim(),
+      address: deliveryInfo.address.trim(),
+    };
     const users = readStorage(USERS_KEY, []);
     const userExists = users.some((user) => user.email === nextUser.email);
     const nextUsers = userExists
@@ -866,9 +919,10 @@ function App() {
       goTo("login");
       return;
     }
-    if (!currentUser.address?.trim()) {
+    const missingFields = missingDeliveryFields(currentUser);
+    if (missingFields.length) {
       setCartOpen(false);
-      window.alert("Preencha o local de envio do pedido na sua conta antes de finalizar.");
+      window.alert(`Preencha as informacoes de entrega antes de finalizar: ${missingFields.join(", ")}.`);
       goTo("conta");
       return;
     }
@@ -909,7 +963,7 @@ function App() {
     if (route.page === "product") return <ProductPage id={route.id} onAdd={addToCart} />;
     if (route.page === "about") return <AboutPage />;
     if (route.page === "login") return <AuthPage onAuth={loginUser} />;
-    if (route.page === "account") return <AccountPage currentUser={currentUser} orders={orders} onUpdateShipping={updateShippingAddress} />;
+    if (route.page === "account") return <AccountPage currentUser={currentUser} orders={orders} onUpdateDelivery={updateDeliveryInfo} />;
     if (route.page === "admin") return <OwnerPanelPage orders={orders} onStatusChange={updateOrderStatus} />;
     return <HomePage />;
   };

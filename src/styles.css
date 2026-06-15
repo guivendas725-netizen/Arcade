@@ -935,6 +935,7 @@ a {
 }
 
 .auth-form input,
+.shipping-form input,
 .shipping-form textarea,
 .admin-order select,
 .owner-access-card input,
@@ -961,6 +962,15 @@ a {
   resize: vertical;
   padding: 14px;
   line-height: 1.5;
+}
+
+.delivery-warning {
+  margin: 0 0 14px;
+  padding: 12px;
+  color: var(--black);
+  background: var(--soft);
+  border: 1px solid var(--gold);
+  font-size: 0.86rem;
 }
 
 .form-message {
