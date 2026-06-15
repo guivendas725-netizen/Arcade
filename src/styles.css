@@ -957,11 +957,75 @@ a {
   border-top: 1px solid var(--line);
 }
 
+.shipping-row {
+  display: grid;
+  gap: 12px;
+}
+
 .shipping-form textarea {
   min-height: 132px;
   resize: vertical;
   padding: 14px;
   line-height: 1.5;
+}
+
+.form-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  color: var(--gold);
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.form-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+
+.payment-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.payment-options button {
+  min-height: 44px;
+  color: var(--ink);
+  background: var(--soft);
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.payment-options button.is-active {
+  color: var(--soft);
+  background: var(--black);
+  border-color: var(--black);
+}
+
+.confirm-check {
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  gap: 10px;
+  color: var(--muted);
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.confirm-check input {
+  width: 18px;
+  min-height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--black);
 }
 
 .delivery-warning {
@@ -1049,6 +1113,12 @@ a {
   margin: 0;
   padding-left: 18px;
   color: var(--muted);
+}
+
+.order-payment {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .order-progress {
@@ -1254,6 +1324,10 @@ a {
   .profile-grid {
     grid-template-columns: 0.7fr 1.3fr;
     align-items: start;
+  }
+
+  .shipping-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .owner-stats {

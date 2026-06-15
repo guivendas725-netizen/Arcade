@@ -12,6 +12,7 @@ const OWNER_ACCESS_KEY = "arcade_owner_access";
 const OWNER_EMAIL = "arcadecooficial@gmail.com";
 const OWNER_PASSWORD = "Arcadeco3295";
 const orderStatuses = ["Aguardando confirmacao", "Confirmado", "Em producao", "Enviado", "Entregue"];
+const paymentMethods = ["PIX", "Cartao", "Outro"];
 
 const products = [
   {
@@ -55,6 +56,26 @@ const writeStorage = (key, value) => {
 
 const makeOrderId = () => `ARC-${Date.now().toString().slice(-6)}`;
 
+const emptyDeliveryInfo = {
+  cep: "",
+  street: "",
+  number: "",
+  complement: "",
+  neighborhood: "",
+  city: "",
+  state: "",
+  paymentMethod: "",
+  confirmed: false,
+};
+
+const getDeliveryInfo = (user) => ({ ...emptyDeliveryInfo, ...(user?.delivery || {}) });
+
+const formatDeliveryAddress = (delivery) => {
+  const info = { ...emptyDeliveryInfo, ...delivery };
+  const complement = info.complement ? `, ${info.complement}` : "";
+  return `${info.street}, ${info.number}${complement} - ${info.neighborhood}, ${info.city}/${info.state}, CEP ${info.cep}`;
+};
+
 const buildWhatsappUrl = (cart, user, orderId) => {
   if (!cart.length) {
     return `https://wa.me/${phone}?text=${encodeURIComponent("Ola, quero encomendar uma peca da ARCADE.CO.")}`;
@@ -68,9 +89,10 @@ const buildWhatsappUrl = (cart, user, orderId) => {
     const product = products.find((entry) => entry.id === item.id);
     return sum + product.price * item.qty;
   }, 0);
+  const delivery = getDeliveryInfo(user);
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(
-    `Ola, quero confirmar meu pedido ${orderId} da ARCADE.CO:\nCliente: ${user?.name || ""}\nTelefone: ${user?.phone || ""}\nEndereco: ${user?.address || ""}\n${lines.join("\n")}\nTotal: ${formatBRL(total)}`
+    `Ola, quero confirmar meu pedido ${orderId} da ARCADE.CO:\nCliente: ${user?.name || ""}\nTelefone: ${user?.phone || ""}\nEndereco: ${formatDeliveryAddress(delivery)}\nPagamento: ${delivery.paymentMethod}\n${lines.join("\n")}\nTotal: ${formatBRL(total)}`
   )}`;
 };
 
@@ -80,10 +102,18 @@ const buildOwnerWhatsappUrl = (order) =>
   )}`;
 
 const missingDeliveryFields = (user) => {
+  const delivery = getDeliveryInfo(user);
   const fields = [];
   if (!user?.name?.trim()) fields.push("nome completo");
   if (!user?.phone?.trim()) fields.push("WhatsApp");
-  if (!user?.address?.trim()) fields.push("local de envio");
+  if (!delivery.cep.trim()) fields.push("CEP");
+  if (!delivery.street.trim()) fields.push("rua");
+  if (!delivery.number.trim()) fields.push("numero");
+  if (!delivery.neighborhood.trim()) fields.push("bairro");
+  if (!delivery.city.trim()) fields.push("cidade");
+  if (!delivery.state.trim()) fields.push("estado");
+  if (!delivery.paymentMethod.trim()) fields.push("forma de pagamento");
+  if (!delivery.confirmed) fields.push("confirmacao dos dados");
   return fields;
 };
 
@@ -418,7 +448,6 @@ function AuthPage({ onAuth }) {
     name: "",
     email: "",
     phone: "",
-    address: "",
     password: "",
   });
 
@@ -432,7 +461,7 @@ function AuthPage({ onAuth }) {
     const email = form.email.trim().toLowerCase();
 
     if (mode === "register") {
-      if (!form.name || !email || !form.phone || !form.address || !form.password) {
+      if (!form.name || !email || !form.phone || !form.password) {
         setMessage("Preencha todos os campos para criar sua conta.");
         return;
       }
@@ -445,7 +474,8 @@ function AuthPage({ onAuth }) {
         name: form.name.trim(),
         email,
         phone: form.phone.trim(),
-        address: form.address.trim(),
+        address: "",
+        delivery: emptyDeliveryInfo,
         password: form.password,
       };
       const nextUsers = [...users, newUser];
@@ -489,14 +519,6 @@ function AuthPage({ onAuth }) {
                 WhatsApp
                 <input value={form.phone} onChange={(event) => updateField("phone", event.target.value)} />
               </label>
-              <label>
-                Local de envio do pedido
-                <input
-                  value={form.address}
-                  onChange={(event) => updateField("address", event.target.value)}
-                  placeholder="Rua, numero, bairro, cidade e ponto de referencia"
-                />
-              </label>
             </>
           )}
           <label>
@@ -535,7 +557,7 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
   const [deliveryForm, setDeliveryForm] = useState({
     name: currentUser?.name || "",
     phone: currentUser?.phone || "",
-    address: currentUser?.address || "",
+    ...getDeliveryInfo(currentUser),
   });
   const [deliveryMessage, setDeliveryMessage] = useState("");
 
@@ -543,7 +565,7 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
     setDeliveryForm({
       name: currentUser?.name || "",
       phone: currentUser?.phone || "",
-      address: currentUser?.address || "",
+      ...getDeliveryInfo(currentUser),
     });
   }, [currentUser]);
 
@@ -572,9 +594,17 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
     const nextDelivery = {
       name: deliveryForm.name.trim(),
       phone: deliveryForm.phone.trim(),
-      address: deliveryForm.address.trim(),
+      cep: deliveryForm.cep.trim(),
+      street: deliveryForm.street.trim(),
+      number: deliveryForm.number.trim(),
+      complement: deliveryForm.complement.trim(),
+      neighborhood: deliveryForm.neighborhood.trim(),
+      city: deliveryForm.city.trim(),
+      state: deliveryForm.state.trim().toUpperCase(),
+      paymentMethod: deliveryForm.paymentMethod.trim(),
+      confirmed: deliveryForm.confirmed,
     };
-    const missing = missingDeliveryFields(nextDelivery);
+    const missing = missingDeliveryFields({ ...currentUser, name: nextDelivery.name, phone: nextDelivery.phone, delivery: nextDelivery });
     if (missing.length) {
       setDeliveryMessage(`Preencha: ${missing.join(", ")}.`);
       return;
@@ -604,7 +634,8 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
           )}
           <p><strong>Nome:</strong> {currentUser.name}</p>
           <p><strong>WhatsApp:</strong> {currentUser.phone}</p>
-          <p><strong>Entrega:</strong> {currentUser.address || "Ainda nao informado"}</p>
+          <p><strong>Entrega:</strong> {deliveryIsComplete ? formatDeliveryAddress(getDeliveryInfo(currentUser)) : "Ainda nao informado"}</p>
+          <p><strong>Pagamento:</strong> {getDeliveryInfo(currentUser).paymentMethod || "Ainda nao informado"}</p>
 
           <form className="shipping-form" onSubmit={saveDeliveryInfo}>
             <label>
@@ -623,14 +654,97 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
                 placeholder="Numero para contato da entrega"
               />
             </label>
+
+            <div className="form-divider">
+              <span>Endereco de entrega</span>
+            </div>
+
             <label>
-              Local de envio do pedido
-              <textarea
-                value={deliveryForm.address}
-                onChange={(event) => updateDeliveryField("address", event.target.value)}
-                placeholder="Rua, numero, bairro, cidade, CEP e ponto de referencia"
-                rows={5}
+              CEP
+              <input
+                value={deliveryForm.cep}
+                onChange={(event) => updateDeliveryField("cep", event.target.value)}
+                placeholder="00000-000"
               />
+            </label>
+            <label>
+              Rua
+              <input
+                value={deliveryForm.street}
+                onChange={(event) => updateDeliveryField("street", event.target.value)}
+                placeholder="Nome da rua ou avenida"
+              />
+            </label>
+            <div className="shipping-row">
+              <label>
+                Numero
+                <input
+                  value={deliveryForm.number}
+                  onChange={(event) => updateDeliveryField("number", event.target.value)}
+                  placeholder="123"
+                />
+              </label>
+              <label>
+                Complemento (opcional)
+                <input
+                  value={deliveryForm.complement}
+                  onChange={(event) => updateDeliveryField("complement", event.target.value)}
+                  placeholder="Apto, bloco, casa"
+                />
+              </label>
+            </div>
+            <label>
+              Bairro
+              <input
+                value={deliveryForm.neighborhood}
+                onChange={(event) => updateDeliveryField("neighborhood", event.target.value)}
+                placeholder="Bairro"
+              />
+            </label>
+            <div className="shipping-row">
+              <label>
+                Cidade
+                <input
+                  value={deliveryForm.city}
+                  onChange={(event) => updateDeliveryField("city", event.target.value)}
+                  placeholder="Cidade"
+                />
+              </label>
+              <label>
+                Estado
+                <input
+                  value={deliveryForm.state}
+                  onChange={(event) => updateDeliveryField("state", event.target.value)}
+                  placeholder="UF"
+                  maxLength={2}
+                />
+              </label>
+            </div>
+
+            <div className="form-divider">
+              <span>Forma de pagamento</span>
+            </div>
+
+            <div className="payment-options" aria-label="Forma de pagamento">
+              {paymentMethods.map((method) => (
+                <button
+                  className={deliveryForm.paymentMethod === method ? "is-active" : ""}
+                  key={method}
+                  type="button"
+                  onClick={() => updateDeliveryField("paymentMethod", method)}
+                >
+                  {method}
+                </button>
+              ))}
+            </div>
+
+            <label className="confirm-check">
+              <input
+                type="checkbox"
+                checked={deliveryForm.confirmed}
+                onChange={(event) => updateDeliveryField("confirmed", event.target.checked)}
+              />
+              Confirmo que as informacoes de entrega e pagamento estao corretas.
             </label>
             {deliveryMessage && <p className="form-message">{deliveryMessage}</p>}
             <button className="add-button" type="submit">Salvar dados de entrega</button>
@@ -655,6 +769,7 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
                 <b>{formatBRL(order.total)}</b>
               </div>
               <OrderProgress status={order.status} />
+              {order.paymentMethod && <p className="order-payment">Pagamento: {order.paymentMethod}</p>}
               <ul>
                 {order.items.map((item) => {
                   const product = products.find((entry) => entry.id === item.id);
@@ -693,7 +808,7 @@ function OwnerPanelPage({ orders, onStatusChange }) {
   };
 
   const filteredOrders = orders.filter((order) => {
-    const haystack = `${order.id} ${order.userName} ${order.userEmail} ${order.userPhone} ${order.userAddress}`.toLowerCase();
+    const haystack = `${order.id} ${order.userName} ${order.userEmail} ${order.userPhone} ${order.userAddress} ${order.paymentMethod || ""}`.toLowerCase();
     const matchesQuery = haystack.includes(query.trim().toLowerCase());
     const matchesStatus = statusFilter === "Todos" || order.status === statusFilter;
     return matchesQuery && matchesStatus;
@@ -794,6 +909,7 @@ function OwnerPanelPage({ orders, onStatusChange }) {
                 <p><strong>E-mail:</strong> {order.userEmail}</p>
                 <p><strong>WhatsApp:</strong> {order.userPhone}</p>
                 <p><strong>Entrega:</strong> {order.userAddress}</p>
+                <p><strong>Pagamento:</strong> {order.paymentMethod || "Nao informado"}</p>
               </div>
 
               <ul>
@@ -890,11 +1006,23 @@ function App() {
   };
 
   const updateDeliveryInfo = (deliveryInfo) => {
+    const delivery = {
+      cep: deliveryInfo.cep.trim(),
+      street: deliveryInfo.street.trim(),
+      number: deliveryInfo.number.trim(),
+      complement: deliveryInfo.complement.trim(),
+      neighborhood: deliveryInfo.neighborhood.trim(),
+      city: deliveryInfo.city.trim(),
+      state: deliveryInfo.state.trim().toUpperCase(),
+      paymentMethod: deliveryInfo.paymentMethod.trim(),
+      confirmed: deliveryInfo.confirmed,
+    };
     const nextUser = {
       ...currentUser,
       name: deliveryInfo.name.trim(),
       phone: deliveryInfo.phone.trim(),
-      address: deliveryInfo.address.trim(),
+      address: formatDeliveryAddress(delivery),
+      delivery,
     };
     const users = readStorage(USERS_KEY, []);
     const userExists = users.some((user) => user.email === nextUser.email);
@@ -937,7 +1065,9 @@ function App() {
       userEmail: currentUser.email,
       userName: currentUser.name,
       userPhone: currentUser.phone,
-      userAddress: currentUser.address.trim(),
+      userAddress: formatDeliveryAddress(getDeliveryInfo(currentUser)),
+      userDelivery: getDeliveryInfo(currentUser),
+      paymentMethod: getDeliveryInfo(currentUser).paymentMethod,
       status: "Aguardando confirmacao",
       total,
       items: cart,
