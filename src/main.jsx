@@ -42,6 +42,13 @@ const products = [
 const formatBRL = (value) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const capitalizeText = (value = "") =>
+  value
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trimStart()
+    .replace(/(^|\s)([a-zA-ZÀ-ÿ])/g, (match) => match.toUpperCase());
+
 const readStorage = (key, fallback) => {
   try {
     return JSON.parse(localStorage.getItem(key)) || fallback;
@@ -72,8 +79,8 @@ const getDeliveryInfo = (user) => ({ ...emptyDeliveryInfo, ...(user?.delivery ||
 
 const formatDeliveryAddress = (delivery) => {
   const info = { ...emptyDeliveryInfo, ...delivery };
-  const complement = info.complement ? `, ${info.complement}` : "";
-  return `${info.street}, ${info.number}${complement} - ${info.neighborhood}, ${info.city}/${info.state}, CEP ${info.cep}`;
+  const complement = info.complement ? `, ${capitalizeText(info.complement)}` : "";
+  return `${capitalizeText(info.street)}, ${info.number}${complement} - ${capitalizeText(info.neighborhood)}, ${capitalizeText(info.city)}/${info.state}, CEP ${info.cep}`;
 };
 
 const buildWhatsappUrl = (cart, user, orderId) => {
@@ -169,7 +176,7 @@ function Header({ cartCount, currentUser, onCartOpen, onLogout }) {
         {currentUser && (
           <button className="account-chip" type="button" onClick={onLogout} aria-label="Sair da conta">
             <User size={16} />
-            <span>{currentUser.name?.split(" ")[0] || "Cliente"}</span>
+            <span>{capitalizeText(currentUser.name)?.split(" ")[0] || "Cliente"}</span>
             <LogOut size={15} />
           </button>
         )}
@@ -179,6 +186,13 @@ function Header({ cartCount, currentUser, onCartOpen, onLogout }) {
           <span>{cartCount}</span>
         </button>
       </div>
+
+      <button
+        className={`mobile-menu-backdrop ${menuOpen ? "is-open" : ""}`}
+        type="button"
+        onClick={() => setMenuOpen(false)}
+        aria-label="Fechar menu"
+      />
 
       <div className={`mobile-menu ${menuOpen ? "is-open" : ""}`}>
         <button className="icon-button close-menu" type="button" onClick={() => setMenuOpen(false)} aria-label="Fechar menu">
@@ -432,7 +446,10 @@ function CartDrawer({ cart, currentUser, open, onClose, onCheckout, onIncrease, 
           {!currentUser && cart.length > 0 && (
             <p className="cart-login-note">Entre ou cadastre-se para salvar o pedido na sua conta.</p>
           )}
-          <button className={`checkout-button ${!cart.length ? "is-disabled" : ""}`} type="button" onClick={onCheckout}>
+          {!cart.length && (
+            <p className="cart-empty-note">Adicione uma peca a sacola para liberar a finalizacao.</p>
+          )}
+          <button className={`checkout-button ${!cart.length ? "is-disabled" : ""}`} type="button" onClick={onCheckout} disabled={!cart.length}>
             {currentUser ? "Finalizar pelo WhatsApp" : "Entrar para finalizar"}
           </button>
         </div>
@@ -543,12 +560,21 @@ function OrderProgress({ status }) {
   const currentIndex = Math.max(orderStatuses.indexOf(status), 0);
 
   return (
-    <div className="order-progress">
-      {orderStatuses.map((entry, index) => (
-        <span className={index <= currentIndex ? "is-done" : ""} key={entry}>
-          {entry}
-        </span>
-      ))}
+    <div className="order-progress" aria-label={`Status atual: ${status}`}>
+      {orderStatuses.map((entry, index) => {
+        const isCurrent = index === currentIndex;
+        const isPast = index < currentIndex;
+        const isProduction = entry === "Em producao" && isCurrent;
+        return (
+          <div className={`progress-step ${isCurrent ? "is-current" : ""} ${isPast ? "is-past" : ""}`} key={entry}>
+            <span className="progress-dot" aria-hidden="true" />
+            <div className="progress-copy">
+              <span>{entry}</span>
+              {isProduction && <small>Postagem estimada em 7 a 12 dias uteis.</small>}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -586,20 +612,21 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
   const deliveryIsComplete = missingFields.length === 0;
 
   const updateDeliveryField = (field, value) => {
-    setDeliveryForm((current) => ({ ...current, [field]: value }));
+    const shouldCapitalize = ["name", "street", "neighborhood", "city"].includes(field);
+    setDeliveryForm((current) => ({ ...current, [field]: shouldCapitalize ? capitalizeText(value) : value }));
   };
 
   const saveDeliveryInfo = (event) => {
     event.preventDefault();
     const nextDelivery = {
-      name: deliveryForm.name.trim(),
+      name: capitalizeText(deliveryForm.name),
       phone: deliveryForm.phone.trim(),
       cep: deliveryForm.cep.trim(),
-      street: deliveryForm.street.trim(),
+      street: capitalizeText(deliveryForm.street),
       number: deliveryForm.number.trim(),
       complement: deliveryForm.complement.trim(),
-      neighborhood: deliveryForm.neighborhood.trim(),
-      city: deliveryForm.city.trim(),
+      neighborhood: capitalizeText(deliveryForm.neighborhood),
+      city: capitalizeText(deliveryForm.city),
       state: deliveryForm.state.trim().toUpperCase(),
       paymentMethod: deliveryForm.paymentMethod.trim(),
       confirmed: deliveryForm.confirmed,
@@ -618,7 +645,7 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
       <div className="account-head">
         <div>
           <p>Minha conta</p>
-          <h1>Ola, {currentUser.name?.split(" ")[0] || "Cliente"}.</h1>
+          <h1>Ola, {capitalizeText(currentUser.name)?.split(" ")[0] || "Cliente"}.</h1>
           <span>{currentUser.email} · {currentUser.phone}</span>
         </div>
         <button className="shop-link" type="button" onClick={() => goTo("camisetas")}>Comprar mais</button>
@@ -632,7 +659,7 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
               Complete seus dados de entrega antes de finalizar qualquer pedido.
             </p>
           )}
-          <p><strong>Nome:</strong> {currentUser.name}</p>
+          <p><strong>Nome:</strong> {capitalizeText(currentUser.name)}</p>
           <p><strong>WhatsApp:</strong> {currentUser.phone}</p>
           <p><strong>Entrega:</strong> {deliveryIsComplete ? formatDeliveryAddress(getDeliveryInfo(currentUser)) : "Ainda nao informado"}</p>
           <p><strong>Pagamento:</strong> {getDeliveryInfo(currentUser).paymentMethod || "Ainda nao informado"}</p>
@@ -905,7 +932,7 @@ function OwnerPanelPage({ orders, onStatusChange }) {
               </div>
 
               <div className="customer-box">
-                <p><strong>Cliente:</strong> {order.userName}</p>
+                <p><strong>Cliente:</strong> {capitalizeText(order.userName)}</p>
                 <p><strong>E-mail:</strong> {order.userEmail}</p>
                 <p><strong>WhatsApp:</strong> {order.userPhone}</p>
                 <p><strong>Entrega:</strong> {order.userAddress}</p>
@@ -1008,18 +1035,18 @@ function App() {
   const updateDeliveryInfo = (deliveryInfo) => {
     const delivery = {
       cep: deliveryInfo.cep.trim(),
-      street: deliveryInfo.street.trim(),
+      street: capitalizeText(deliveryInfo.street),
       number: deliveryInfo.number.trim(),
-      complement: deliveryInfo.complement.trim(),
-      neighborhood: deliveryInfo.neighborhood.trim(),
-      city: deliveryInfo.city.trim(),
+      complement: capitalizeText(deliveryInfo.complement),
+      neighborhood: capitalizeText(deliveryInfo.neighborhood),
+      city: capitalizeText(deliveryInfo.city),
       state: deliveryInfo.state.trim().toUpperCase(),
       paymentMethod: deliveryInfo.paymentMethod.trim(),
       confirmed: deliveryInfo.confirmed,
     };
     const nextUser = {
       ...currentUser,
-      name: deliveryInfo.name.trim(),
+      name: capitalizeText(deliveryInfo.name),
       phone: deliveryInfo.phone.trim(),
       address: formatDeliveryAddress(delivery),
       delivery,
@@ -1063,7 +1090,7 @@ function App() {
     const order = {
       id: orderId,
       userEmail: currentUser.email,
-      userName: currentUser.name,
+      userName: capitalizeText(currentUser.name),
       userPhone: currentUser.phone,
       userAddress: formatDeliveryAddress(getDeliveryInfo(currentUser)),
       userDelivery: getDeliveryInfo(currentUser),
