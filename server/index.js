@@ -2,8 +2,16 @@ import cors from "cors";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import "dotenv/config";
 import express from "express";
+import { createPixPayment, getMercadoPagoPayment, mercadoPagoIsConfigured } from "./mercadopago.js";
 import { capturePayPalOrder, createPayPalOrder, verifyPayPalWebhook } from "./paypal.js";
-import { findOrderByPayPalId, readOrders, saveOrder, updateOrder } from "./storage.js";
+import {
+  findOrderById,
+  findOrderByMercadoPagoPaymentId,
+  findOrderByPayPalId,
+  readOrders,
+  saveOrder,
+  updateOrder,
+} from "./storage.js";
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
@@ -148,7 +156,7 @@ app.post("/api/orders", async (request, response) => {
       userAddress: customer.address,
       userDelivery: delivery,
       paymentMethod,
-      paymentStatus: paymentMethod === "PayPal" ? "WAITING_PAYPAL" : "WAITING_MANUAL_CONFIRMATION",
+      paymentStatus: paymentMethod === "PayPal" ? "WAITING_PAYPAL" : paymentMethod === "PIX" ? "WAITING_PIX" : "WAITING_MANUAL_CONFIRMATION",
       status: "Aguardando pagamento",
       total: calculateTotal(items),
       items,
@@ -166,6 +174,29 @@ app.post("/api/orders", async (request, response) => {
         message: paypal.approvalUrl
           ? "Pedido criado. Redirecione o cliente para o PayPal."
           : "Pedido criado em modo desenvolvimento. Configure as chaves PayPal para pagamento real.",
+      });
+    }
+
+    if (paymentMethod === "PIX") {
+      if (!mercadoPagoIsConfigured()) {
+        return response.status(503).json({
+          error: "PIX automatico ainda nao configurado. Adicione MERCADO_PAGO_ACCESS_TOKEN no Render.",
+        });
+      }
+
+      const pix = await createPixPayment({ order, total: order.total });
+      order.mercadoPagoPaymentId = pix.id;
+      order.paymentProvider = "Mercado Pago";
+      order.paymentPayload = { status: pix.status };
+      await saveOrder(order);
+      return response.status(201).json({
+        order,
+        pix: {
+          qrCode: pix.qrCode,
+          qrCodeBase64: pix.qrCodeBase64,
+          ticketUrl: pix.ticketUrl,
+        },
+        message: "Pedido criado. Pague o Pix para liberar a producao automaticamente.",
       });
     }
 
@@ -217,6 +248,38 @@ app.post("/api/paypal/webhook", async (request, response) => {
       await markPaid(order, event);
     }
 
+    return response.sendStatus(204);
+  } catch (error) {
+    console.error(error);
+    return response.sendStatus(500);
+  }
+});
+
+app.post("/api/mercadopago/webhook", async (request, response) => {
+  try {
+    const paymentId = request.body?.data?.id || request.query["data.id"] || request.query.id;
+    if (!paymentId) {
+      return response.sendStatus(204);
+    }
+
+    const payment = await getMercadoPagoPayment(paymentId);
+    const order =
+      (payment.external_reference && await findOrderById(payment.external_reference)) ||
+      await findOrderByMercadoPagoPaymentId(paymentId);
+
+    if (!order) {
+      return response.sendStatus(204);
+    }
+
+    if (payment.status === "approved") {
+      await markPaid(order, payment);
+      return response.sendStatus(204);
+    }
+
+    await updateOrder(order.id, () => ({
+      paymentStatus: String(payment.status || "WAITING_PIX").toUpperCase(),
+      paymentPayload: payment,
+    }));
     return response.sendStatus(204);
   } catch (error) {
     console.error(error);

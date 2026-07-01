@@ -46,3 +46,13 @@ export const findOrderByPayPalId = async (paypalOrderId) => {
   const orders = await readOrders();
   return orders.find((order) => order.paypalOrderId === paypalOrderId);
 };
+
+export const findOrderByMercadoPagoPaymentId = async (paymentId) => {
+  const orders = await readOrders();
+  return orders.find((order) => String(order.mercadoPagoPaymentId) === String(paymentId));
+};
+
+export const findOrderById = async (orderId) => {
+  const orders = await readOrders();
+  return orders.find((order) => order.id === orderId);
+};

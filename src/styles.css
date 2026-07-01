@@ -2290,6 +2290,75 @@ body {
   border-color: rgba(185, 154, 98, 0.28);
 }
 
+.pix-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.76);
+  backdrop-filter: blur(12px);
+}
+
+.pix-modal {
+  width: min(520px, 100%);
+  max-height: min(760px, calc(100svh - 36px));
+  display: grid;
+  gap: 18px;
+  overflow: auto;
+  padding: clamp(20px, 5vw, 34px);
+  color: var(--ink);
+  background: #0d0d0d;
+  border: 1px solid rgba(244, 241, 234, 0.14);
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.48);
+}
+
+.pix-modal p {
+  margin: 0 0 8px;
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.pix-modal h2 {
+  margin: 0;
+  color: var(--soft);
+  font-family: Syne, Inter, sans-serif;
+  font-size: clamp(1.7rem, 6vw, 2.6rem);
+  text-transform: uppercase;
+}
+
+.pix-modal span,
+.pix-modal label {
+  color: rgba(244, 241, 234, 0.64);
+}
+
+.pix-qr {
+  width: min(280px, 100%);
+  margin: 0 auto;
+  padding: 14px;
+  background: var(--soft);
+}
+
+.pix-modal textarea {
+  width: 100%;
+  min-height: 120px;
+  margin-top: 8px;
+  resize: vertical;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(244, 241, 234, 0.14);
+  padding: 12px;
+}
+
+.pix-actions {
+  display: grid;
+  gap: 10px;
+}
+
 @media (min-width: 1120px) {
   .commerce-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

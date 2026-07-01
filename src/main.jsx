@@ -619,6 +619,50 @@ function OrderProgress({ status }) {
   );
 }
 
+function PixPaymentModal({ payment, onClose }) {
+  if (!payment) return null;
+
+  const copyPixCode = async () => {
+    try {
+      await navigator.clipboard.writeText(payment.qrCode);
+      window.alert("Codigo Pix copiado.");
+    } catch {
+      window.alert("Nao foi possivel copiar automaticamente. Selecione e copie o codigo Pix.");
+    }
+  };
+
+  return (
+    <div className="pix-modal-backdrop">
+      <section className="pix-modal" role="dialog" aria-modal="true" aria-label="Pagamento Pix">
+        <div>
+          <p>Pagamento PIX</p>
+          <h2>Pedido {payment.orderId}</h2>
+          <span>A confirmacao e automatica. Assim que o Pix for aprovado, seu pedido muda para pagamento confirmado.</span>
+        </div>
+
+        {payment.qrCodeBase64 && (
+          <img className="pix-qr" src={`data:image/png;base64,${payment.qrCodeBase64}`} alt="QR Code Pix" />
+        )}
+
+        <label>
+          Pix copia e cola
+          <textarea readOnly value={payment.qrCode || ""} />
+        </label>
+
+        <div className="pix-actions">
+          <button className="add-button" type="button" onClick={copyPixCode}>Copiar codigo Pix</button>
+          {payment.ticketUrl && (
+            <a className="checkout-button" href={payment.ticketUrl} target="_blank" rel="noreferrer">
+              Abrir no Mercado Pago
+            </a>
+          )}
+          <button className="filter-button" type="button" onClick={onClose}>Fechar</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function AccountPage({ currentUser, orders, onUpdateDelivery }) {
   const [deliveryForm, setDeliveryForm] = useState({
     name: currentUser?.name || "",
@@ -1043,6 +1087,7 @@ function App() {
   const [orders, setOrders] = useState(() => readStorage(ORDERS_KEY, []));
   const [processingCheckout, setProcessingCheckout] = useState(false);
   const [ownerToken, setOwnerToken] = useState(() => readStorage(OWNER_TOKEN_KEY, ""));
+  const [pixPayment, setPixPayment] = useState(null);
 
   useEffect(() => {
     const onHashChange = () => setRoute(getRoute());
@@ -1255,6 +1300,17 @@ function App() {
       setCart([]);
       setCartOpen(false);
 
+      if (data.pix) {
+        setPixPayment({
+          orderId: data.order.id,
+          qrCode: data.pix.qrCode,
+          qrCodeBase64: data.pix.qrCodeBase64,
+          ticketUrl: data.pix.ticketUrl,
+        });
+        goTo("conta");
+        return;
+      }
+
       if (data.approvalUrl) {
         window.location.href = data.approvalUrl;
         return;
@@ -1349,6 +1405,7 @@ function App() {
         onDecrease={decrease}
         onRemove={remove}
       />
+      <PixPaymentModal payment={pixPayment} onClose={() => setPixPayment(null)} />
     </>
   );
 }
