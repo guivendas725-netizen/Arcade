@@ -1917,3 +1917,403 @@ body {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Dark commerce refresh - inspired by premium apparel stores */
+:root {
+  --black: #050505;
+  --surface: #0d0d0d;
+  --surface-2: #151515;
+  --soft: #f4f1ea;
+  --soft-2: #e7e1d5;
+  --ink: #f4f1ea;
+  --muted: #a5a098;
+  --line: rgba(244, 241, 234, 0.13);
+  --gold: #b99a62;
+  --white: #111;
+}
+
+html,
+body {
+  background: #050505;
+}
+
+body {
+  color: var(--ink);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(5, 5, 5, 0) 360px),
+    #050505;
+}
+
+.store-header {
+  background: rgba(5, 5, 5, 0.84);
+  border-bottom-color: rgba(244, 241, 234, 0.12);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+.topbar {
+  color: rgba(244, 241, 234, 0.76);
+  background: #0b0b0b;
+  border-bottom: 1px solid rgba(244, 241, 234, 0.08);
+}
+
+.logo,
+.desktop-nav button,
+.mobile-only,
+.bag-button,
+.account-chip,
+.filter-button {
+  color: var(--ink);
+}
+
+.desktop-nav button {
+  color: rgba(244, 241, 234, 0.68);
+}
+
+.desktop-nav button:hover,
+.logo-button:hover {
+  color: var(--soft);
+}
+
+.search-box,
+.icon-button,
+.bag-button,
+.account-chip,
+.filter-button {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(244, 241, 234, 0.14);
+}
+
+.search-box input {
+  color: var(--ink);
+}
+
+.search-box input::placeholder {
+  color: rgba(244, 241, 234, 0.46);
+}
+
+.bag-button span {
+  color: #050505;
+  background: var(--gold);
+}
+
+.home-page,
+.page-shell {
+  background: transparent;
+}
+
+.store-hero {
+  width: min(1440px, calc(100% - var(--gap) * 2));
+  gap: 1px;
+  padding: 1px;
+  background: rgba(244, 241, 234, 0.12);
+  border: 1px solid rgba(244, 241, 234, 0.12);
+}
+
+.hero-copy {
+  min-height: min(680px, calc(100svh - 120px));
+  padding: clamp(28px, 7vw, 86px);
+  background:
+    linear-gradient(90deg, rgba(5, 5, 5, 0.96), rgba(5, 5, 5, 0.76) 52%, rgba(5, 5, 5, 0.22)),
+    url("/images/banner.png") center / cover;
+}
+
+.hero-copy p,
+.store-section-head p,
+.product-category,
+.cart-header p {
+  color: var(--gold);
+}
+
+.hero-copy h1,
+.store-section-head h2,
+.brand-strip h2 {
+  color: var(--soft);
+}
+
+.hero-copy span {
+  color: rgba(244, 241, 234, 0.72);
+}
+
+.hero-card {
+  min-height: min(680px, calc(100svh - 120px));
+  background: #0a0a0a;
+}
+
+.hero-card img {
+  object-fit: cover;
+  opacity: 0.94;
+}
+
+.shop-link,
+.add-button,
+.checkout-button {
+  color: #050505;
+  background: var(--soft);
+  border-color: var(--soft);
+  box-shadow: none;
+}
+
+.shop-link:hover,
+.add-button:hover,
+.checkout-button:hover {
+  color: #050505;
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.home-categories {
+  width: min(1440px, calc(100% - var(--gap) * 2));
+  gap: 1px;
+  padding: 1px;
+  background: rgba(244, 241, 234, 0.12);
+  border: 1px solid rgba(244, 241, 234, 0.12);
+}
+
+.home-categories button {
+  min-height: 430px;
+  background: #101010;
+}
+
+.home-categories img {
+  object-fit: contain;
+  padding: clamp(28px, 6vw, 70px);
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 58%);
+}
+
+.home-categories span {
+  left: 24px;
+  bottom: 24px;
+  color: var(--soft);
+  font-size: clamp(1.2rem, 4vw, 2rem);
+}
+
+.home-categories button::after {
+  background: linear-gradient(180deg, transparent 42%, rgba(5, 5, 5, 0.86));
+}
+
+.atelier-strip {
+  background: rgba(244, 241, 234, 0.12);
+  border-color: rgba(244, 241, 234, 0.12);
+}
+
+.atelier-strip article {
+  background: #0d0d0d;
+}
+
+.atelier-strip strong {
+  color: var(--soft);
+}
+
+.atelier-strip p {
+  color: rgba(244, 241, 234, 0.58);
+}
+
+.store-section {
+  width: min(1440px, calc(100% - var(--gap) * 2));
+}
+
+.store-section-head,
+.account-head,
+.owner-panel-head {
+  border-bottom-color: rgba(244, 241, 234, 0.12);
+}
+
+.category-rail button,
+.size-row button,
+.payment-options button {
+  color: rgba(244, 241, 234, 0.78);
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(244, 241, 234, 0.13);
+}
+
+.category-rail button.is-active,
+.size-row button.is-active,
+.payment-options button.is-active {
+  color: #050505;
+  background: var(--soft);
+  border-color: var(--soft);
+}
+
+.commerce-grid {
+  gap: 1px;
+  padding: 1px;
+  background: rgba(244, 241, 234, 0.12);
+  border: 1px solid rgba(244, 241, 234, 0.12);
+}
+
+.commerce-card {
+  background: #0d0d0d;
+  border: 0;
+  box-shadow: none;
+}
+
+.commerce-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.36);
+}
+
+.favorite-button {
+  color: var(--ink);
+  background: rgba(5, 5, 5, 0.54);
+  border-color: rgba(244, 241, 234, 0.16);
+}
+
+.product-photo {
+  min-height: 430px;
+  background: #151515;
+}
+
+.product-photo img {
+  object-fit: contain;
+  padding: clamp(24px, 4vw, 58px);
+}
+
+.product-photo span {
+  color: #050505;
+  background: var(--soft);
+}
+
+.commerce-info {
+  min-height: 340px;
+  padding: 22px;
+}
+
+.product-title,
+.price-row strong,
+.cart-item h3,
+.cart-header h2,
+.modal-info h2 {
+  color: var(--soft);
+}
+
+.product-desc,
+.installments,
+.price-row span,
+.modal-info p,
+.modal-info li {
+  color: rgba(244, 241, 234, 0.58);
+}
+
+.price-row span {
+  color: rgba(244, 241, 234, 0.38);
+}
+
+.add-button {
+  color: #050505;
+  background: var(--soft);
+  border-color: var(--soft);
+}
+
+.brand-strip {
+  background: #0b0b0b;
+  border-top: 1px solid rgba(244, 241, 234, 0.1);
+  border-bottom: 1px solid rgba(244, 241, 234, 0.1);
+}
+
+.brand-strip p {
+  color: rgba(244, 241, 234, 0.64);
+}
+
+.store-footer {
+  color: var(--ink);
+  background: #050505;
+  border-top: 1px solid rgba(244, 241, 234, 0.12);
+}
+
+.cart-overlay {
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.cart-drawer,
+.auth-card,
+.profile-card,
+.orders-panel,
+.owner-order-card,
+.owner-toolbar,
+.owner-stats article,
+.product-modal {
+  color: var(--ink);
+  background: #0d0d0d;
+  border-color: rgba(244, 241, 234, 0.12);
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.34);
+}
+
+.cart-header,
+.cart-footer,
+.order-card {
+  border-color: rgba(244, 241, 234, 0.12);
+}
+
+.cart-item {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(244, 241, 234, 0.1);
+}
+
+.cart-item img {
+  background: #171717;
+}
+
+.empty-cart,
+.subtotal,
+.checkout-note,
+.profile-card p,
+.orders-panel p,
+.customer-box p {
+  color: rgba(244, 241, 234, 0.62);
+}
+
+.auth-form input,
+.shipping-form input,
+.shipping-form textarea,
+.owner-access-card input,
+.owner-toolbar input,
+.owner-toolbar select,
+.owner-order-actions select {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(244, 241, 234, 0.14);
+}
+
+.auth-form input::placeholder,
+.shipping-form input::placeholder,
+.shipping-form textarea::placeholder,
+.owner-access-card input::placeholder,
+.owner-toolbar input::placeholder {
+  color: rgba(244, 241, 234, 0.42);
+}
+
+.delivery-warning,
+.payment-return-message,
+.customer-box {
+  background: rgba(185, 154, 98, 0.08);
+  border-color: rgba(185, 154, 98, 0.28);
+}
+
+@media (min-width: 1120px) {
+  .commerce-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 759px) {
+  .store-hero,
+  .home-categories,
+  .store-section {
+    width: calc(100% - 28px);
+  }
+
+  .hero-copy,
+  .hero-card {
+    min-height: 430px;
+  }
+
+  .home-categories button,
+  .product-photo {
+    min-height: 370px;
+  }
+
+  .commerce-info {
+    min-height: auto;
+  }
+}
