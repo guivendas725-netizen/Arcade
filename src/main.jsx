@@ -105,7 +105,7 @@ const buildWhatsappUrl = (cart, user, orderId) => {
   const delivery = getDeliveryInfo(user);
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(
-    `Ola, quero confirmar meu pedido ${orderId} da ARCADE.CO:\nCliente: ${user?.name || ""}\nTelefone: ${user?.phone || ""}\nEndereco: ${formatDeliveryAddress(delivery)}\nPagamento: ${delivery.paymentMethod}\n${lines.join("\n")}\nTotal: ${formatBRL(total)}`
+    `Ola, acabei de fazer o pedido ${orderId} na ARCADE.CO.\n\nCliente: ${user?.name || ""}\nTelefone: ${user?.phone || ""}\nEndereco: ${formatDeliveryAddress(delivery)}\nPagamento escolhido: ${delivery.paymentMethod}\n\nItens:\n${lines.join("\n")}\n\nTotal: ${formatBRL(total)}\n\nVou enviar o comprovante por aqui para confirmacao do pagamento.`
   )}`;
 };
 
@@ -1248,6 +1248,7 @@ function App() {
         return;
       }
 
+      const manualPaymentWhatsappUrl = buildWhatsappUrl(cart, currentUser, data.order.id);
       const nextOrders = [data.order, ...orders.filter((order) => order.id !== data.order.id)];
       setOrders(nextOrders);
       writeStorage(ORDERS_KEY, nextOrders);
@@ -1259,8 +1260,8 @@ function App() {
         return;
       }
 
-      window.alert(data.message || "Pedido criado aguardando confirmacao do pagamento.");
-      goTo("conta");
+      window.alert("Pedido criado. Agora o WhatsApp sera aberto com os dados do pedido para atendimento e envio do comprovante.");
+      window.location.href = manualPaymentWhatsappUrl;
     } catch {
       window.alert("O servidor de pagamentos nao esta disponivel. Inicie o backend para finalizar pedidos reais.");
     } finally {
