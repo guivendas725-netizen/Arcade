@@ -9,7 +9,15 @@ const USERS_KEY = "arcade_users";
 const CURRENT_USER_KEY = "arcade_current_user";
 const ORDERS_KEY = "arcade_orders";
 const OWNER_TOKEN_KEY = "arcade_owner_token";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8787";
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const productionApiBaseUrl = "https://arcade-api-sdxg.onrender.com";
+const isOfficialDomain = window.location.hostname.includes("arcadecoficial.com.br");
+const API_BASE_URL =
+  configuredApiBaseUrl && configuredApiBaseUrl !== "VITE_API_BASE_URL"
+    ? configuredApiBaseUrl
+    : isOfficialDomain
+      ? productionApiBaseUrl
+      : "http://127.0.0.1:8787";
 const paidStatus = "Pagamento confirmado";
 const orderStatuses = ["Aguardando pagamento", paidStatus, "Em producao", "Enviado", "Entregue"];
 const paymentMethods = ["PIX", "Cartao", "PayPal", "Outro"];

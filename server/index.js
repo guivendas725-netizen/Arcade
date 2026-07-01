@@ -11,8 +11,12 @@ const clientBaseUrl = process.env.CLIENT_BASE_URL || "http://127.0.0.1:5173";
 const allowedOrigins = new Set([
   clientBaseUrl,
   process.env.APP_BASE_URL,
+  "https://www.arcadecoficial.com.br",
+  "https://arcadecoficial.com.br",
   "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
   "http://localhost:5173",
+  "http://localhost:5174",
 ].filter(Boolean));
 const ownerEmail = process.env.OWNER_EMAIL || "arcadecooficial@gmail.com";
 const ownerPassword = process.env.OWNER_PASSWORD || "";
