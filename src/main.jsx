@@ -11,8 +11,10 @@ const ORDERS_KEY = "arcade_orders";
 const OWNER_ACCESS_KEY = "arcade_owner_access";
 const OWNER_EMAIL = "arcadecooficial@gmail.com";
 const OWNER_PASSWORD = "Arcadeco3295";
-const orderStatuses = ["Aguardando confirmacao", "Confirmado", "Em producao", "Enviado", "Entregue"];
-const paymentMethods = ["PIX", "Cartao", "Outro"];
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8787";
+const paidStatus = "Pagamento confirmado";
+const orderStatuses = ["Aguardando pagamento", paidStatus, "Em producao", "Enviado", "Entregue"];
+const paymentMethods = ["PIX", "Cartao", "PayPal", "Outro"];
 
 const products = [
   {
@@ -60,8 +62,6 @@ const readStorage = (key, fallback) => {
 const writeStorage = (key, value) => {
   localStorage.setItem(key, JSON.stringify(value));
 };
-
-const makeOrderId = () => `ARC-${Date.now().toString().slice(-6)}`;
 
 const emptyDeliveryInfo = {
   cep: "",
@@ -125,7 +125,7 @@ const missingDeliveryFields = (user) => {
 };
 
 const getRoute = () => {
-  const hash = window.location.hash.replace("#", "");
+  const hash = window.location.hash.replace("#", "").split("?")[0];
   if (!hash || hash === "/") return { page: "home" };
   if (hash.startsWith("produto/")) return { page: "product", id: hash.split("/")[1] };
   if (hash === "camisetas") return { page: "shop" };
@@ -134,6 +134,19 @@ const getRoute = () => {
   if (hash === "conta") return { page: "account" };
   if (hash === "painel-lojista" || hash === "gestao") return { page: "admin" };
   return { page: "home" };
+};
+
+const getPaymentReturnMessage = () => {
+  const hash = window.location.hash.replace("#", "");
+  const query = hash.includes("?") ? hash.split("?")[1] : "";
+  const params = new URLSearchParams(query);
+  const payment = params.get("pagamento");
+
+  if (payment === "confirmado") return "Pagamento confirmado. Seu pedido foi liberado para producao.";
+  if (payment === "pendente") return "Pagamento recebido pelo PayPal, mas ainda esta pendente de confirmacao.";
+  if (payment === "erro") return "Nao foi possivel confirmar o pagamento automaticamente. Confira no PayPal e no painel do lojista.";
+  if (payment === "pedido-nao-encontrado") return "Pagamento retornou sem pedido correspondente. Verifique o painel do lojista.";
+  return "";
 };
 
 const goTo = (hash) => {
@@ -234,6 +247,24 @@ function HomePage() {
           <img src="/images/polo-white.png" alt="Ribbed White ARCADE.CO" />
           <span>Ribbed White</span>
         </button>
+      </div>
+
+      <div className="atelier-strip">
+        <article>
+          <span>01</span>
+          <strong>Sob encomenda</strong>
+          <p>A peca entra em producao somente apos pagamento confirmado.</p>
+        </article>
+        <article>
+          <span>02</span>
+          <strong>Baixa quantidade</strong>
+          <p>Sem estoque em massa, sem reposicao infinita, sem excesso.</p>
+        </article>
+        <article>
+          <span>03</span>
+          <strong>Presenca limpa</strong>
+          <p>Caimento elegante, textura premium e logo discreta.</p>
+        </article>
       </div>
     </section>
   );
@@ -382,7 +413,7 @@ function ProductPage({ id, onAdd }) {
   );
 }
 
-function CartDrawer({ cart, currentUser, open, onClose, onCheckout, onIncrease, onDecrease, onRemove }) {
+function CartDrawer({ cart, currentUser, open, processingCheckout, onClose, onCheckout, onIncrease, onDecrease, onRemove }) {
   const subtotal = cart.reduce((sum, item) => {
     const product = products.find((entry) => entry.id === item.id);
     return sum + product.price * item.qty;
@@ -449,9 +480,12 @@ function CartDrawer({ cart, currentUser, open, onClose, onCheckout, onIncrease, 
           {!cart.length && (
             <p className="cart-empty-note">Adicione uma peca a sacola para liberar a finalizacao.</p>
           )}
-          <button className={`checkout-button ${!cart.length ? "is-disabled" : ""}`} type="button" onClick={onCheckout} disabled={!cart.length}>
-            {currentUser ? "Finalizar pelo WhatsApp" : "Entrar para finalizar"}
+          <button className={`checkout-button ${!cart.length ? "is-disabled" : ""}`} type="button" onClick={onCheckout} disabled={!cart.length || processingCheckout}>
+            {processingCheckout ? "Criando pedido..." : currentUser ? "Finalizar pedido" : "Entrar para finalizar"}
           </button>
+          {currentUser && cart.length > 0 && (
+            <p className="cart-empty-note">Pedidos sob encomenda so entram em producao apos confirmacao do pagamento.</p>
+          )}
         </div>
       </aside>
     </>
@@ -651,6 +685,8 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
         <button className="shop-link" type="button" onClick={() => goTo("camisetas")}>Comprar mais</button>
       </div>
 
+      {getPaymentReturnMessage() && <p className="payment-return-message">{getPaymentReturnMessage()}</p>}
+
       <div className="profile-grid">
         <article className="profile-card">
           <h2>Entrega do pedido</h2>
@@ -800,7 +836,7 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
               <ul>
                 {order.items.map((item) => {
                   const product = products.find((entry) => entry.id === item.id);
-                  return <li key={`${order.id}-${item.id}-${item.size}`}>{product.name} · {item.size} · qtd {item.qty}</li>;
+                  return <li key={`${order.id}-${item.id}-${item.size}`}>{product?.name || item.name} · {item.size} · qtd {item.qty}</li>;
                 })}
               </ul>
             </div>
@@ -886,7 +922,7 @@ function OwnerPanelPage({ orders, onStatusChange }) {
         <div>
           <p>Painel do lojista</p>
           <h1>Acompanhamento de pedidos</h1>
-          <span>Pedidos confirmados pelo checkout aparecem aqui para voce atualizar a situacao de cada cliente.</span>
+          <span>Pedidos entram como aguardando pagamento e so devem ir para producao depois da confirmacao no PayPal, PIX, cartao ou banco.</span>
         </div>
         <button className="filter-button" type="button" onClick={closePanel}>Bloquear painel</button>
       </div>
@@ -937,12 +973,13 @@ function OwnerPanelPage({ orders, onStatusChange }) {
                 <p><strong>WhatsApp:</strong> {order.userPhone}</p>
                 <p><strong>Entrega:</strong> {order.userAddress}</p>
                 <p><strong>Pagamento:</strong> {order.paymentMethod || "Nao informado"}</p>
+                <p><strong>Situacao do pagamento:</strong> {order.paymentStatus === "CONFIRMED" ? "Confirmado" : "Aguardando confirmacao"}</p>
               </div>
 
               <ul>
                 {order.items.map((item) => {
                   const product = products.find((entry) => entry.id === item.id);
-                  return <li key={`${order.id}-${item.id}-${item.size}`}>{product.name} · tamanho {item.size} · qtd {item.qty}</li>;
+                  return <li key={`${order.id}-${item.id}-${item.size}`}>{product?.name || item.name} · tamanho {item.size} · qtd {item.qty}</li>;
                 })}
               </ul>
             </div>
@@ -987,11 +1024,28 @@ function App() {
   const [route, setRoute] = useState(getRoute);
   const [currentUser, setCurrentUser] = useState(() => readStorage(CURRENT_USER_KEY, null));
   const [orders, setOrders] = useState(() => readStorage(ORDERS_KEY, []));
+  const [processingCheckout, setProcessingCheckout] = useState(false);
 
   useEffect(() => {
     const onHashChange = () => setRoute(getRoute());
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    const loadOrders = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/orders`);
+        if (!response.ok) return;
+        const serverOrders = await response.json();
+        setOrders(serverOrders);
+        writeStorage(ORDERS_KEY, serverOrders);
+      } catch {
+        // Keeps the storefront usable while the backend is not running locally.
+      }
+    };
+
+    loadOrders();
   }, []);
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
@@ -1067,7 +1121,7 @@ function App() {
     goTo("login");
   };
 
-  const checkout = () => {
+  const checkout = async () => {
     if (!cart.length) return;
     if (!currentUser) {
       setCartOpen(false);
@@ -1082,37 +1136,85 @@ function App() {
       return;
     }
 
-    const orderId = makeOrderId();
-    const total = cart.reduce((sum, item) => {
-      const product = products.find((entry) => entry.id === item.id);
-      return sum + product.price * item.qty;
-    }, 0);
-    const order = {
-      id: orderId,
-      userEmail: currentUser.email,
-      userName: capitalizeText(currentUser.name),
-      userPhone: currentUser.phone,
-      userAddress: formatDeliveryAddress(getDeliveryInfo(currentUser)),
-      userDelivery: getDeliveryInfo(currentUser),
-      paymentMethod: getDeliveryInfo(currentUser).paymentMethod,
-      status: "Aguardando confirmacao",
-      total,
-      items: cart,
-      createdAt: new Date().toISOString(),
-    };
-    const nextOrders = [order, ...orders];
-    setOrders(nextOrders);
-    writeStorage(ORDERS_KEY, nextOrders);
-    window.open(buildWhatsappUrl(cart, currentUser, orderId), "_blank", "noreferrer");
-    setCart([]);
-    setCartOpen(false);
-    goTo("conta");
+    setProcessingCheckout(true);
+    try {
+      const enrichedItems = cart.map((item) => {
+        const product = products.find((entry) => entry.id === item.id);
+        return {
+          ...item,
+          name: product.name,
+          price: product.price,
+        };
+      });
+      const response = await fetch(`${API_BASE_URL}/api/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer: {
+            email: currentUser.email,
+            name: capitalizeText(currentUser.name),
+            phone: currentUser.phone,
+            address: formatDeliveryAddress(getDeliveryInfo(currentUser)),
+          },
+          delivery: getDeliveryInfo(currentUser),
+          paymentMethod: getDeliveryInfo(currentUser).paymentMethod,
+          items: enrichedItems,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        window.alert(data.error || "Nao foi possivel criar o pedido.");
+        return;
+      }
+
+      const nextOrders = [data.order, ...orders.filter((order) => order.id !== data.order.id)];
+      setOrders(nextOrders);
+      writeStorage(ORDERS_KEY, nextOrders);
+      setCart([]);
+      setCartOpen(false);
+
+      if (data.approvalUrl) {
+        window.location.href = data.approvalUrl;
+        return;
+      }
+
+      window.alert(data.message || "Pedido criado aguardando confirmacao do pagamento.");
+      goTo("conta");
+    } catch {
+      window.alert("O servidor de pagamentos nao esta disponivel. Inicie o backend para finalizar pedidos reais.");
+    } finally {
+      setProcessingCheckout(false);
+    }
   };
 
-  const updateOrderStatus = (orderId, status) => {
-    const nextOrders = orders.map((order) => (order.id === orderId ? { ...order, status } : order));
+  const updateOrderStatus = async (orderId, status) => {
+    const order = orders.find((entry) => entry.id === orderId);
+    const paidIndex = orderStatuses.indexOf(paidStatus);
+    const selectedIndex = orderStatuses.indexOf(status);
+
+    if (selectedIndex > paidIndex && order?.paymentStatus !== "CONFIRMED" && order?.status !== paidStatus) {
+      window.alert("Este pedido ainda nao teve pagamento confirmado. Ele nao pode ir para producao.");
+      return;
+    }
+
+    const nextOrders = orders.map((entry) =>
+      entry.id === orderId
+        ? { ...entry, status, paymentStatus: status === paidStatus ? "CONFIRMED" : entry.paymentStatus }
+        : entry
+    );
     setOrders(nextOrders);
     writeStorage(ORDERS_KEY, nextOrders);
+
+    try {
+      await fetch(`${API_BASE_URL}/api/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+    } catch {
+      // Local state stays updated in development even if the API is offline.
+    }
   };
 
   const renderPage = () => {
@@ -1138,6 +1240,7 @@ function App() {
       <CartDrawer
         cart={cart}
         currentUser={currentUser}
+        processingCheckout={processingCheckout}
         open={cartOpen}
         onClose={() => setCartOpen(false)}
         onCheckout={checkout}
