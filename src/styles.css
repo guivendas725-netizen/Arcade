@@ -199,7 +199,7 @@ a {
   position: fixed;
   inset: 0 0 0 auto;
   width: min(330px, 86vw);
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 22px;
   padding: 86px 28px 28px;
@@ -208,12 +208,12 @@ a {
   border-left: 1px solid rgba(246, 243, 236, 0.18);
   box-shadow: -24px 0 80px rgba(8, 8, 7, 0.36);
   z-index: 110;
-  transform: translateX(100%);
-  transition: transform 360ms var(--ease);
+  transform: translateX(0);
 }
 
 .mobile-menu.is-open {
-  transform: translateX(0);
+  display: flex;
+  animation: panelIn 320ms var(--ease);
 }
 
 .mobile-menu-backdrop {
@@ -731,16 +731,28 @@ a {
   inset: 0 0 0 auto;
   z-index: 90;
   width: min(440px, 100%);
-  display: flex;
+  display: none;
   flex-direction: column;
   background: var(--soft);
   border-left: 1px solid var(--line);
-  transform: translateX(100%);
-  transition: transform 320ms var(--ease);
+  transform: translateX(0);
 }
 
 .cart-drawer.is-open {
-  transform: translateX(0);
+  display: flex;
+  animation: panelIn 320ms var(--ease);
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0.96;
+    transform: translateX(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .cart-header {

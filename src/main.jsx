@@ -8,9 +8,7 @@ const sizes = ["P", "M", "G", "GG"];
 const USERS_KEY = "arcade_users";
 const CURRENT_USER_KEY = "arcade_current_user";
 const ORDERS_KEY = "arcade_orders";
-const OWNER_ACCESS_KEY = "arcade_owner_access";
-const OWNER_EMAIL = "arcadecooficial@gmail.com";
-const OWNER_PASSWORD = "Arcadeco3295";
+const OWNER_TOKEN_KEY = "arcade_owner_token";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8787";
 const paidStatus = "Pagamento confirmado";
 const orderStatuses = ["Aguardando pagamento", paidStatus, "Em producao", "Enviado", "Entregue"];
@@ -847,27 +845,36 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
   );
 }
 
-function OwnerPanelPage({ orders, onStatusChange }) {
-  const [unlocked, setUnlocked] = useState(() => readStorage(OWNER_ACCESS_KEY, false));
+function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onStatusChange }) {
+  const [unlocked, setUnlocked] = useState(() => Boolean(ownerToken));
   const [credentials, setCredentials] = useState({ email: "", password: "" });
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const openPanel = (event) => {
+  useEffect(() => {
+    setUnlocked(Boolean(ownerToken));
+  }, [ownerToken]);
+
+  const openPanel = async (event) => {
     event.preventDefault();
-    const email = credentials.email.trim().toLowerCase();
-    if (email !== OWNER_EMAIL || credentials.password !== OWNER_PASSWORD) {
-      setError("Login ou senha incorretos.");
+    setError("");
+    setLoading(true);
+    const result = await onOwnerLogin(credentials);
+    setLoading(false);
+
+    if (!result.ok) {
+      setError(result.error || "Login ou senha incorretos.");
       return;
     }
+
     setUnlocked(true);
-    writeStorage(OWNER_ACCESS_KEY, true);
   };
 
   const closePanel = () => {
     setUnlocked(false);
-    writeStorage(OWNER_ACCESS_KEY, false);
+    onOwnerLogout();
   };
 
   const filteredOrders = orders.filter((order) => {
@@ -910,7 +917,9 @@ function OwnerPanelPage({ orders, onStatusChange }) {
             />
           </label>
           {error && <p className="form-message">{error}</p>}
-          <button className="add-button" type="submit">Entrar no painel</button>
+          <button className="add-button" type="submit" disabled={loading}>
+            {loading ? "Verificando..." : "Entrar no painel"}
+          </button>
         </form>
       </section>
     );
@@ -1025,6 +1034,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(() => readStorage(CURRENT_USER_KEY, null));
   const [orders, setOrders] = useState(() => readStorage(ORDERS_KEY, []));
   const [processingCheckout, setProcessingCheckout] = useState(false);
+  const [ownerToken, setOwnerToken] = useState(() => readStorage(OWNER_TOKEN_KEY, ""));
 
   useEffect(() => {
     const onHashChange = () => setRoute(getRoute());
@@ -1034,8 +1044,14 @@ function App() {
 
   useEffect(() => {
     const loadOrders = async () => {
+      if (!currentUser?.email) {
+        setOrders([]);
+        writeStorage(ORDERS_KEY, []);
+        return;
+      }
+
       try {
-        const response = await fetch(`${API_BASE_URL}/api/orders`);
+        const response = await fetch(`${API_BASE_URL}/api/orders?email=${encodeURIComponent(currentUser.email)}`);
         if (!response.ok) return;
         const serverOrders = await response.json();
         setOrders(serverOrders);
@@ -1046,7 +1062,7 @@ function App() {
     };
 
     loadOrders();
-  }, []);
+  }, [currentUser?.email]);
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
@@ -1117,9 +1133,65 @@ function App() {
 
   const logoutUser = () => {
     setCurrentUser(null);
+    setOrders([]);
     localStorage.removeItem(CURRENT_USER_KEY);
+    localStorage.removeItem(ORDERS_KEY);
     goTo("login");
   };
+
+  const fetchOwnerOrders = async (token = ownerToken) => {
+    if (!token) return { ok: false, error: "Acesso do lojista expirado." };
+
+    const response = await fetch(`${API_BASE_URL}/api/admin/orders`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setOwnerToken("");
+      localStorage.removeItem(OWNER_TOKEN_KEY);
+      return { ok: false, error: data.error || "Nao foi possivel carregar os pedidos." };
+    }
+
+    setOrders(data);
+    writeStorage(ORDERS_KEY, data);
+    return { ok: true };
+  };
+
+  const ownerLogin = async (credentials) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: credentials.email.trim(),
+          password: credentials.password,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.token) {
+        return { ok: false, error: data.error || "Login ou senha incorretos." };
+      }
+
+      setOwnerToken(data.token);
+      writeStorage(OWNER_TOKEN_KEY, data.token);
+      return fetchOwnerOrders(data.token);
+    } catch {
+      return { ok: false, error: "Servidor indisponivel. Inicie a API para acessar o painel." };
+    }
+  };
+
+  const ownerLogout = () => {
+    setOwnerToken("");
+    localStorage.removeItem(OWNER_TOKEN_KEY);
+  };
+
+  useEffect(() => {
+    if (route.page === "admin" && ownerToken) {
+      fetchOwnerOrders(ownerToken);
+    }
+  }, [route.page, ownerToken]);
 
   const checkout = async () => {
     if (!cart.length) return;
@@ -1189,6 +1261,11 @@ function App() {
   };
 
   const updateOrderStatus = async (orderId, status) => {
+    if (!ownerToken) {
+      window.alert("Entre novamente no painel do lojista para alterar pedidos.");
+      return;
+    }
+
     const order = orders.find((entry) => entry.id === orderId);
     const paidIndex = orderStatuses.indexOf(paidStatus);
     const selectedIndex = orderStatuses.indexOf(status);
@@ -1198,22 +1275,27 @@ function App() {
       return;
     }
 
-    const nextOrders = orders.map((entry) =>
-      entry.id === orderId
-        ? { ...entry, status, paymentStatus: status === paidStatus ? "CONFIRMED" : entry.paymentStatus }
-        : entry
-    );
-    setOrders(nextOrders);
-    writeStorage(ORDERS_KEY, nextOrders);
-
     try {
-      await fetch(`${API_BASE_URL}/api/orders/${orderId}/status`, {
+      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/status`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${ownerToken}`,
+        },
         body: JSON.stringify({ status }),
       });
+      const data = await response.json();
+
+      if (!response.ok) {
+        window.alert(data.error || "Nao foi possivel atualizar o pedido.");
+        return;
+      }
+
+      const nextOrders = orders.map((entry) => (entry.id === orderId ? data : entry));
+      setOrders(nextOrders);
+      writeStorage(ORDERS_KEY, nextOrders);
     } catch {
-      // Local state stays updated in development even if the API is offline.
+      window.alert("Servidor indisponivel. Nao foi possivel atualizar o pedido com seguranca.");
     }
   };
 
@@ -1223,7 +1305,17 @@ function App() {
     if (route.page === "about") return <AboutPage />;
     if (route.page === "login") return <AuthPage onAuth={loginUser} />;
     if (route.page === "account") return <AccountPage currentUser={currentUser} orders={orders} onUpdateDelivery={updateDeliveryInfo} />;
-    if (route.page === "admin") return <OwnerPanelPage orders={orders} onStatusChange={updateOrderStatus} />;
+    if (route.page === "admin") {
+      return (
+        <OwnerPanelPage
+          orders={orders}
+          ownerToken={ownerToken}
+          onOwnerLogin={ownerLogin}
+          onOwnerLogout={ownerLogout}
+          onStatusChange={updateOrderStatus}
+        />
+      );
+    }
     return <HomePage />;
   };
 
