@@ -2,7 +2,12 @@ import cors from "cors";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import "dotenv/config";
 import express from "express";
-import { createPixPayment, getMercadoPagoPayment, mercadoPagoIsConfigured } from "./mercadopago.js";
+import {
+  createCardCheckoutPreference,
+  createPixPayment,
+  getMercadoPagoPayment,
+  mercadoPagoIsConfigured,
+} from "./mercadopago.js";
 import { capturePayPalOrder, createPayPalOrder, verifyPayPalWebhook } from "./paypal.js";
 import {
   deleteOrder,
@@ -70,7 +75,7 @@ const calculateTotal = (items = []) =>
 
 const paidStatus = "Pagamento confirmado";
 const orderStatuses = ["Aguardando pagamento", paidStatus, "Em producao", "Enviado", "Entregue"];
-const paymentStatuses = ["WAITING_MANUAL_CONFIRMATION", "WAITING_PIX", "WAITING_PAYPAL", "CONFIRMED", "REFUNDED", "CANCELLED"];
+const paymentStatuses = ["WAITING_MANUAL_CONFIRMATION", "WAITING_PIX", "WAITING_CARD", "WAITING_PAYPAL", "CONFIRMED", "REFUNDED", "CANCELLED"];
 
 const buildAddressFromDelivery = (delivery = {}) => {
   if (!delivery.street) return "";
@@ -181,6 +186,60 @@ const markPaid = async (order, paymentPayload = {}) =>
     paymentPayload,
   }));
 
+const extractMercadoPagoPaymentId = (request) => {
+  const body = request.body || {};
+  const query = request.query || {};
+  const resource = body.resource || query.resource;
+
+  if (body.data?.id) return body.data.id;
+  if (query["data.id"]) return query["data.id"];
+  if (body.id) return body.id;
+  if (query.id) return query.id;
+  if (typeof resource === "string") return resource.split("/").filter(Boolean).pop();
+  return "";
+};
+
+const applyMercadoPagoPayment = async (paymentId) => {
+  if (!paymentId || !mercadoPagoIsConfigured()) return null;
+
+  const payment = await getMercadoPagoPayment(paymentId);
+  const order =
+    (payment.external_reference && await findOrderById(payment.external_reference)) ||
+    await findOrderByMercadoPagoPaymentId(paymentId);
+
+  if (!order) return null;
+
+  if (payment.status === "approved") {
+    return markPaid(order, payment);
+  }
+
+  return updateOrder(order.id, () => ({
+    mercadoPagoPaymentId: payment.id,
+    paymentStatus: String(payment.status || order.paymentStatus || "WAITING_PIX").toUpperCase(),
+    paymentPayload: payment,
+  }));
+};
+
+const syncPendingMercadoPagoOrders = async (orders) => {
+  if (!mercadoPagoIsConfigured()) return orders;
+
+  const pendingPayments = orders.filter((order) =>
+    order.mercadoPagoPaymentId && order.paymentStatus !== "CONFIRMED"
+  );
+
+  if (!pendingPayments.length) return orders;
+
+  for (const order of pendingPayments) {
+    try {
+      await applyMercadoPagoPayment(order.mercadoPagoPaymentId);
+    } catch (error) {
+      console.error(`Nao foi possivel sincronizar pagamento ${order.mercadoPagoPaymentId}`, error);
+    }
+  }
+
+  return readOrders();
+};
+
 app.get("/api/health", (_request, response) => {
   response.json({ ok: true, service: "arcade-api" });
 });
@@ -200,7 +259,8 @@ app.post("/api/admin/login", (request, response) => {
 });
 
 app.get("/api/admin/orders", requireAdmin, async (_request, response) => {
-  response.json(await readOrders());
+  const orders = await syncPendingMercadoPagoOrders(await readOrders());
+  response.json(orders);
 });
 
 app.get("/api/admin/products", requireAdmin, async (_request, response) => {
@@ -272,7 +332,7 @@ app.get("/api/orders", async (request, response) => {
     return response.status(400).json({ error: "Informe o e-mail da conta para consultar pedidos." });
   }
 
-  const orders = await readOrders();
+  const orders = await syncPendingMercadoPagoOrders(await readOrders());
   response.json(
     orders
       .filter((order) => order.userEmail?.toLowerCase() === email)
@@ -296,7 +356,7 @@ app.post("/api/orders", async (request, response) => {
       userAddress: customer.address,
       userDelivery: delivery,
       paymentMethod,
-      paymentStatus: paymentMethod === "PayPal" ? "WAITING_PAYPAL" : paymentMethod === "PIX" ? "WAITING_PIX" : "WAITING_MANUAL_CONFIRMATION",
+      paymentStatus: paymentMethod === "PayPal" ? "WAITING_PAYPAL" : paymentMethod === "PIX" ? "WAITING_PIX" : paymentMethod === "Cartao" ? "WAITING_CARD" : "WAITING_MANUAL_CONFIRMATION",
       status: "Aguardando pagamento",
       total: calculateTotal(items),
       items,
@@ -337,6 +397,25 @@ app.post("/api/orders", async (request, response) => {
           ticketUrl: pix.ticketUrl,
         },
         message: "Pedido criado. Pague o Pix para liberar a producao automaticamente.",
+      });
+    }
+
+    if (paymentMethod === "Cartao") {
+      if (!mercadoPagoIsConfigured()) {
+        return response.status(503).json({
+          error: "Cartao automatico ainda nao configurado. Adicione MERCADO_PAGO_ACCESS_TOKEN no Render.",
+        });
+      }
+
+      const preference = await createCardCheckoutPreference({ order, total: order.total });
+      order.mercadoPagoPreferenceId = preference.id;
+      order.paymentProvider = "Mercado Pago";
+      order.paymentPayload = { preferenceId: preference.id };
+      await saveOrder(order);
+      return response.status(201).json({
+        order,
+        approvalUrl: preference.initPoint || preference.sandboxInitPoint,
+        message: "Pedido criado. Redirecione o cliente para pagamento com cartao.",
       });
     }
 
@@ -397,29 +476,12 @@ app.post("/api/paypal/webhook", async (request, response) => {
 
 app.post("/api/mercadopago/webhook", async (request, response) => {
   try {
-    const paymentId = request.body?.data?.id || request.query["data.id"] || request.query.id;
+    const paymentId = extractMercadoPagoPaymentId(request);
     if (!paymentId) {
       return response.sendStatus(204);
     }
 
-    const payment = await getMercadoPagoPayment(paymentId);
-    const order =
-      (payment.external_reference && await findOrderById(payment.external_reference)) ||
-      await findOrderByMercadoPagoPaymentId(paymentId);
-
-    if (!order) {
-      return response.sendStatus(204);
-    }
-
-    if (payment.status === "approved") {
-      await markPaid(order, payment);
-      return response.sendStatus(204);
-    }
-
-    await updateOrder(order.id, () => ({
-      paymentStatus: String(payment.status || "WAITING_PIX").toUpperCase(),
-      paymentPayload: payment,
-    }));
+    await applyMercadoPagoPayment(paymentId);
     return response.sendStatus(204);
   } catch (error) {
     console.error(error);

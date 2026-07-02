@@ -49,6 +49,61 @@ export const createPixPayment = async ({ order, total }) => {
   };
 };
 
+export const createCardCheckoutPreference = async ({ order, total }) => {
+  if (!mercadoPagoIsConfigured()) {
+    throw new Error("Mercado Pago nao configurado.");
+  }
+
+  const appBaseUrl = process.env.APP_BASE_URL || "http://127.0.0.1:8787";
+  const clientBaseUrl = process.env.CLIENT_BASE_URL || "http://127.0.0.1:5173";
+
+  const response = await fetch(`${mercadoPagoBaseUrl}/checkout/preferences`, {
+    method: "POST",
+    headers: mercadoPagoHeaders({ "X-Idempotency-Key": `${order.id}-card` }),
+    body: JSON.stringify({
+      external_reference: order.id,
+      notification_url: `${appBaseUrl}/api/mercadopago/webhook`,
+      back_urls: {
+        success: `${clientBaseUrl}/#conta?pagamento=confirmado`,
+        pending: `${clientBaseUrl}/#conta?pagamento=pendente`,
+        failure: `${clientBaseUrl}/#conta?pagamento=erro`,
+      },
+      auto_return: "approved",
+      payer: {
+        email: order.userEmail,
+        name: order.userName,
+      },
+      items: order.items.map((item) => ({
+        id: item.id,
+        title: item.name || item.id,
+        quantity: Number(item.qty || 1),
+        unit_price: Number(Number(item.price || total).toFixed(2)),
+        currency_id: "BRL",
+      })),
+      payment_methods: {
+        excluded_payment_types: [
+          { id: "ticket" },
+          { id: "bank_transfer" },
+          { id: "atm" },
+        ],
+        installments: 6,
+      },
+    }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || data.error || "Nao foi possivel criar o checkout de cartao.");
+  }
+
+  return {
+    id: data.id,
+    initPoint: data.init_point,
+    sandboxInitPoint: data.sandbox_init_point,
+    raw: data,
+  };
+};
+
 export const getMercadoPagoPayment = async (paymentId) => {
   if (!mercadoPagoIsConfigured()) {
     throw new Error("Mercado Pago nao configurado.");

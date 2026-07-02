@@ -26,6 +26,7 @@ const paymentMethods = ["PIX", "Cartao", "PayPal", "Outro"];
 const paymentStatusOptions = [
   { value: "WAITING_MANUAL_CONFIRMATION", label: "Aguardando confirmacao" },
   { value: "WAITING_PIX", label: "Aguardando PIX" },
+  { value: "WAITING_CARD", label: "Aguardando Cartao" },
   { value: "WAITING_PAYPAL", label: "Aguardando PayPal" },
   { value: "CONFIRMED", label: "Confirmado" },
   { value: "REFUNDED", label: "Reembolsado" },
