@@ -22,6 +22,14 @@ const API_BASE_URL =
 const paidStatus = "Pagamento confirmado";
 const orderStatuses = ["Aguardando pagamento", paidStatus, "Em producao", "Enviado", "Entregue"];
 const paymentMethods = ["PIX", "Cartao", "PayPal", "Outro"];
+const paymentStatusOptions = [
+  { value: "WAITING_MANUAL_CONFIRMATION", label: "Aguardando confirmacao" },
+  { value: "WAITING_PIX", label: "Aguardando PIX" },
+  { value: "WAITING_PAYPAL", label: "Aguardando PayPal" },
+  { value: "CONFIRMED", label: "Confirmado" },
+  { value: "REFUNDED", label: "Reembolsado" },
+  { value: "CANCELLED", label: "Cancelado" },
+];
 
 const products = [
   {
@@ -47,6 +55,51 @@ const products = [
     description: "Ribana branca premium, acabamento limpo e caimento elegante.",
   },
 ];
+
+const createOwnerOrderDraft = (order = null) => {
+  const firstItem = order?.items?.[0] || {};
+  return {
+    id: order?.id || "",
+    userName: order?.userName || "",
+    userEmail: order?.userEmail || "",
+    userPhone: order?.userPhone || "",
+    userAddress: order?.userAddress || "",
+    paymentMethod: order?.paymentMethod || "PIX",
+    paymentStatus: order?.paymentStatus || "WAITING_MANUAL_CONFIRMATION",
+    status: order?.status || "Aguardando pagamento",
+    productId: firstItem.id || products[0].id,
+    size: firstItem.size || "M",
+    qty: String(firstItem.qty || 1),
+    total: String(order?.total || products[0].price),
+    notes: order?.notes || "",
+  };
+};
+
+const ownerDraftToPayload = (draft) => {
+  const product = products.find((entry) => entry.id === draft.productId) || products[0];
+  const qty = Math.max(1, Number(draft.qty || 1));
+  const total = Number(draft.total || product.price * qty);
+
+  return {
+    id: draft.id || undefined,
+    userName: capitalizeText(draft.userName),
+    userEmail: draft.userEmail.trim().toLowerCase(),
+    userPhone: draft.userPhone.trim(),
+    userAddress: draft.userAddress.trim(),
+    paymentMethod: draft.paymentMethod,
+    paymentStatus: draft.paymentStatus,
+    status: draft.status,
+    total,
+    notes: draft.notes.trim(),
+    items: [{
+      id: product.id,
+      name: product.name,
+      size: draft.size,
+      qty,
+      price: total / qty,
+    }],
+  };
+};
 
 const formatBRL = (value) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -898,13 +951,99 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
   );
 }
 
-function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onStatusChange }) {
+function OwnerOrderForm({ draft, mode, onChange, onCancel, onSubmit, saving }) {
+  const updateDraft = (field, value) => onChange((current) => ({ ...current, [field]: value }));
+
+  return (
+    <form className="owner-editor" onSubmit={onSubmit}>
+      <div className="owner-editor-head">
+        <div>
+          <p>{mode === "create" ? "Novo pedido" : "Editar pedido"}</p>
+          <h2>{mode === "create" ? "Criar pedido manual" : draft.id}</h2>
+        </div>
+        <button className="filter-button" type="button" onClick={onCancel}>Cancelar</button>
+      </div>
+
+      <div className="owner-editor-grid">
+        <label>
+          Cliente
+          <input value={draft.userName} onChange={(event) => updateDraft("userName", event.target.value)} placeholder="Nome completo" />
+        </label>
+        <label>
+          E-mail
+          <input type="email" value={draft.userEmail} onChange={(event) => updateDraft("userEmail", event.target.value)} placeholder="cliente@email.com" />
+        </label>
+        <label>
+          WhatsApp
+          <input value={draft.userPhone} onChange={(event) => updateDraft("userPhone", event.target.value)} placeholder="65999999999" />
+        </label>
+        <label>
+          Entrega
+          <input value={draft.userAddress} onChange={(event) => updateDraft("userAddress", event.target.value)} placeholder="Endereco completo" />
+        </label>
+        <label>
+          Produto
+          <select value={draft.productId} onChange={(event) => updateDraft("productId", event.target.value)}>
+            {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+          </select>
+        </label>
+        <label>
+          Tamanho
+          <select value={draft.size} onChange={(event) => updateDraft("size", event.target.value)}>
+            {sizes.map((size) => <option key={size}>{size}</option>)}
+          </select>
+        </label>
+        <label>
+          Quantidade
+          <input type="number" min="1" value={draft.qty} onChange={(event) => updateDraft("qty", event.target.value)} />
+        </label>
+        <label>
+          Total
+          <input type="number" min="0" step="0.01" value={draft.total} onChange={(event) => updateDraft("total", event.target.value)} />
+        </label>
+        <label>
+          Pagamento
+          <select value={draft.paymentMethod} onChange={(event) => updateDraft("paymentMethod", event.target.value)}>
+            {paymentMethods.map((method) => <option key={method}>{method}</option>)}
+          </select>
+        </label>
+        <label>
+          Situacao do pagamento
+          <select value={draft.paymentStatus} onChange={(event) => updateDraft("paymentStatus", event.target.value)}>
+            {paymentStatusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+          </select>
+        </label>
+        <label>
+          Situacao do pedido
+          <select value={draft.status} onChange={(event) => updateDraft("status", event.target.value)}>
+            {orderStatuses.map((status) => <option key={status}>{status}</option>)}
+          </select>
+        </label>
+        <label>
+          Observacoes
+          <input value={draft.notes} onChange={(event) => updateDraft("notes", event.target.value)} placeholder="Ex: ajuste, prazo combinado, origem do pedido" />
+        </label>
+      </div>
+
+      <button className="add-button" type="submit" disabled={saving}>
+        {saving ? "Salvando..." : mode === "create" ? "Criar pedido" : "Salvar alteracoes"}
+      </button>
+    </form>
+  );
+}
+
+function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onStatusChange, onCreateOrder, onUpdateOrder, onDeleteOrder }) {
   const [unlocked, setUnlocked] = useState(() => Boolean(ownerToken));
   const [credentials, setCredentials] = useState({ email: "", password: "" });
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
+  const [paymentFilter, setPaymentFilter] = useState("Todos");
+  const [sortBy, setSortBy] = useState("recentes");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [editorMode, setEditorMode] = useState("");
+  const [orderDraft, setOrderDraft] = useState(createOwnerOrderDraft());
+  const [savingOrder, setSavingOrder] = useState(false);
 
   useEffect(() => {
     setUnlocked(Boolean(ownerToken));
@@ -930,17 +1069,63 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
     onOwnerLogout();
   };
 
+  const openCreateOrder = () => {
+    setOrderDraft(createOwnerOrderDraft());
+    setEditorMode("create");
+    setError("");
+  };
+
+  const openEditOrder = (order) => {
+    setOrderDraft(createOwnerOrderDraft(order));
+    setEditorMode("edit");
+    setError("");
+  };
+
+  const submitOwnerOrder = async (event) => {
+    event.preventDefault();
+    setSavingOrder(true);
+    setError("");
+    const payload = ownerDraftToPayload(orderDraft);
+    const result = editorMode === "create"
+      ? await onCreateOrder(payload)
+      : await onUpdateOrder(orderDraft.id, payload);
+    setSavingOrder(false);
+
+    if (!result.ok) {
+      setError(result.error || "Nao foi possivel salvar o pedido.");
+      return;
+    }
+
+    setEditorMode("");
+    setOrderDraft(createOwnerOrderDraft());
+  };
+
+  const confirmDeleteOrder = async (order) => {
+    const confirmed = window.confirm(`Apagar o pedido ${order.id}? Essa acao nao pode ser desfeita.`);
+    if (!confirmed) return;
+    const result = await onDeleteOrder(order.id);
+    if (!result.ok) setError(result.error || "Nao foi possivel apagar o pedido.");
+  };
+
   const filteredOrders = orders.filter((order) => {
     const haystack = `${order.id} ${order.userName} ${order.userEmail} ${order.userPhone} ${order.userAddress} ${order.paymentMethod || ""}`.toLowerCase();
     const matchesQuery = haystack.includes(query.trim().toLowerCase());
     const matchesStatus = statusFilter === "Todos" || order.status === statusFilter;
-    return matchesQuery && matchesStatus;
+    const matchesPayment = paymentFilter === "Todos" || order.paymentStatus === paymentFilter;
+    return matchesQuery && matchesStatus && matchesPayment;
+  }).sort((left, right) => {
+    if (sortBy === "maior-valor") return Number(right.total || 0) - Number(left.total || 0);
+    if (sortBy === "cliente") return String(left.userName || "").localeCompare(String(right.userName || ""));
+    return new Date(right.createdAt) - new Date(left.createdAt);
   });
 
   const statusTotals = orderStatuses.map((status) => ({
     status,
     total: orders.filter((order) => order.status === status).length,
   }));
+  const paidOrders = orders.filter((order) => order.paymentStatus === "CONFIRMED");
+  const waitingPayment = orders.filter((order) => order.paymentStatus !== "CONFIRMED").length;
+  const paidRevenue = paidOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
 
   if (!unlocked) {
     return (
@@ -986,13 +1171,24 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
           <h1>Acompanhamento de pedidos</h1>
           <span>Pedidos entram como aguardando pagamento e so devem ir para producao depois da confirmacao no PayPal, PIX, cartao ou banco.</span>
         </div>
-        <button className="filter-button" type="button" onClick={closePanel}>Bloquear painel</button>
+        <div className="owner-head-actions">
+          <button className="filter-button" type="button" onClick={openCreateOrder}>Novo pedido</button>
+          <button className="filter-button" type="button" onClick={closePanel}>Bloquear painel</button>
+        </div>
       </div>
 
       <div className="owner-stats">
         <article>
           <span>Total</span>
           <strong>{orders.length}</strong>
+        </article>
+        <article>
+          <span>Receita paga</span>
+          <strong>{formatBRL(paidRevenue)}</strong>
+        </article>
+        <article>
+          <span>Aguardando pagamento</span>
+          <strong>{waitingPayment}</strong>
         </article>
         {statusTotals.map((entry) => (
           <article key={entry.status}>
@@ -1014,7 +1210,35 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
             {orderStatuses.map((status) => <option key={status}>{status}</option>)}
           </select>
         </label>
+        <label>
+          Pagamento
+          <select value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)}>
+            <option>Todos</option>
+            {paymentStatusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+          </select>
+        </label>
+        <label>
+          Ordenar
+          <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+            <option value="recentes">Mais recentes</option>
+            <option value="maior-valor">Maior valor</option>
+            <option value="cliente">Cliente</option>
+          </select>
+        </label>
       </div>
+
+      {error && <p className="form-message owner-message">{error}</p>}
+
+      {editorMode && (
+        <OwnerOrderForm
+          draft={orderDraft}
+          mode={editorMode}
+          onChange={setOrderDraft}
+          onCancel={() => setEditorMode("")}
+          onSubmit={submitOwnerOrder}
+          saving={savingOrder}
+        />
+      )}
 
       <div className="owner-orders">
         {!filteredOrders.length && <p className="form-message">Nenhum pedido encontrado.</p>}
@@ -1036,6 +1260,7 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
                 <p><strong>Entrega:</strong> {order.userAddress}</p>
                 <p><strong>Pagamento:</strong> {order.paymentMethod || "Nao informado"}</p>
                 <p><strong>Situacao do pagamento:</strong> {order.paymentStatus === "CONFIRMED" ? "Confirmado" : "Aguardando confirmacao"}</p>
+                {order.notes && <p><strong>Obs:</strong> {order.notes}</p>}
               </div>
 
               <ul>
@@ -1057,6 +1282,8 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
               <a className="checkout-button" href={buildOwnerWhatsappUrl(order)} target="_blank" rel="noreferrer">
                 Avisar cliente
               </a>
+              <button className="filter-button" type="button" onClick={() => openEditOrder(order)}>Editar</button>
+              <button className="filter-button danger-button" type="button" onClick={() => confirmDeleteOrder(order)}>Apagar</button>
             </aside>
           </article>
         ))}
@@ -1241,6 +1468,77 @@ function App() {
     localStorage.removeItem(OWNER_TOKEN_KEY);
   };
 
+  const createOwnerOrder = async (payload) => {
+    if (!ownerToken) return { ok: false, error: "Entre novamente no painel do lojista." };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/orders`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${ownerToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+
+      if (!response.ok) return { ok: false, error: data.error || "Nao foi possivel criar o pedido." };
+
+      const nextOrders = [data, ...orders.filter((order) => order.id !== data.id)];
+      setOrders(nextOrders);
+      writeStorage(ORDERS_KEY, nextOrders);
+      return { ok: true, order: data };
+    } catch {
+      return { ok: false, error: "Servidor indisponivel. Nao foi possivel criar o pedido." };
+    }
+  };
+
+  const updateOwnerOrder = async (orderId, payload) => {
+    if (!ownerToken) return { ok: false, error: "Entre novamente no painel do lojista." };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/orders/${orderId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${ownerToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+
+      if (!response.ok) return { ok: false, error: data.error || "Nao foi possivel editar o pedido." };
+
+      const nextOrders = orders.map((order) => (order.id === orderId ? data : order));
+      setOrders(nextOrders);
+      writeStorage(ORDERS_KEY, nextOrders);
+      return { ok: true, order: data };
+    } catch {
+      return { ok: false, error: "Servidor indisponivel. Nao foi possivel editar o pedido." };
+    }
+  };
+
+  const deleteOwnerOrder = async (orderId) => {
+    if (!ownerToken) return { ok: false, error: "Entre novamente no painel do lojista." };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/orders/${orderId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${ownerToken}` },
+      });
+      const data = await response.json();
+
+      if (!response.ok) return { ok: false, error: data.error || "Nao foi possivel apagar o pedido." };
+
+      const nextOrders = orders.filter((order) => order.id !== orderId);
+      setOrders(nextOrders);
+      writeStorage(ORDERS_KEY, nextOrders);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Servidor indisponivel. Nao foi possivel apagar o pedido." };
+    }
+  };
+
   useEffect(() => {
     if (route.page === "admin" && ownerToken) {
       fetchOwnerOrders(ownerToken);
@@ -1379,6 +1677,9 @@ function App() {
           onOwnerLogin={ownerLogin}
           onOwnerLogout={ownerLogout}
           onStatusChange={updateOrderStatus}
+          onCreateOrder={createOwnerOrder}
+          onUpdateOrder={updateOwnerOrder}
+          onDeleteOrder={deleteOwnerOrder}
         />
       );
     }

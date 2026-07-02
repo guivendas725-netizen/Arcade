@@ -42,6 +42,14 @@ export const updateOrder = async (orderId, updater) => {
   return updatedOrder;
 };
 
+export const deleteOrder = async (orderId) => {
+  const orders = await readOrders();
+  const order = orders.find((entry) => entry.id === orderId);
+  if (!order) return null;
+  await writeOrders(orders.filter((entry) => entry.id !== orderId));
+  return order;
+};
+
 export const findOrderByPayPalId = async (paypalOrderId) => {
   const orders = await readOrders();
   return orders.find((order) => order.paypalOrderId === paypalOrderId);

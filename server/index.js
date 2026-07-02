@@ -5,6 +5,7 @@ import express from "express";
 import { createPixPayment, getMercadoPagoPayment, mercadoPagoIsConfigured } from "./mercadopago.js";
 import { capturePayPalOrder, createPayPalOrder, verifyPayPalWebhook } from "./paypal.js";
 import {
+  deleteOrder,
   findOrderById,
   findOrderByMercadoPagoPaymentId,
   findOrderByPayPalId,
@@ -57,6 +58,35 @@ const calculateTotal = (items = []) =>
 
 const paidStatus = "Pagamento confirmado";
 const orderStatuses = ["Aguardando pagamento", paidStatus, "Em producao", "Enviado", "Entregue"];
+const paymentStatuses = ["WAITING_MANUAL_CONFIRMATION", "WAITING_PIX", "WAITING_PAYPAL", "CONFIRMED", "REFUNDED", "CANCELLED"];
+
+const buildAddressFromDelivery = (delivery = {}) => {
+  if (!delivery.street) return "";
+  const complement = delivery.complement ? `, ${delivery.complement}` : "";
+  return `${delivery.street}, ${delivery.number || "s/n"}${complement} - ${delivery.neighborhood || ""}, ${delivery.city || ""}/${delivery.state || ""}, CEP ${delivery.cep || ""}`;
+};
+
+const normalizeAdminOrderPayload = (payload = {}, currentOrder = {}) => {
+  const items = Array.isArray(payload.items) && payload.items.length ? payload.items : currentOrder.items || [];
+  const delivery = payload.userDelivery || currentOrder.userDelivery || {};
+  const paymentMethod = payload.paymentMethod || currentOrder.paymentMethod || "PIX";
+  const paymentStatus = payload.paymentStatus || currentOrder.paymentStatus || "WAITING_MANUAL_CONFIRMATION";
+  const status = payload.status || currentOrder.status || "Aguardando pagamento";
+
+  return {
+    userEmail: String(payload.userEmail || currentOrder.userEmail || "").trim().toLowerCase(),
+    userName: String(payload.userName || currentOrder.userName || "").trim(),
+    userPhone: String(payload.userPhone || currentOrder.userPhone || "").trim(),
+    userAddress: String(payload.userAddress || currentOrder.userAddress || buildAddressFromDelivery(delivery)).trim(),
+    userDelivery: delivery,
+    paymentMethod,
+    paymentStatus,
+    status,
+    total: payload.total === "" || payload.total == null ? calculateTotal(items) : Number(payload.total),
+    items,
+    notes: String(payload.notes || currentOrder.notes || "").trim(),
+  };
+};
 
 const publicOrder = (order) => ({
   id: order.id,
@@ -136,6 +166,33 @@ app.post("/api/admin/login", (request, response) => {
 
 app.get("/api/admin/orders", requireAdmin, async (_request, response) => {
   response.json(await readOrders());
+});
+
+app.post("/api/admin/orders", requireAdmin, async (request, response) => {
+  const orderPayload = normalizeAdminOrderPayload(request.body);
+
+  if (!orderPayload.userEmail || !orderPayload.userName || !orderPayload.userPhone || !orderPayload.items.length) {
+    return response.status(400).json({ error: "Informe cliente, contato e pelo menos um item." });
+  }
+
+  if (!orderStatuses.includes(orderPayload.status)) {
+    return response.status(400).json({ error: "Status invalido." });
+  }
+
+  if (!paymentStatuses.includes(orderPayload.paymentStatus)) {
+    return response.status(400).json({ error: "Situacao de pagamento invalida." });
+  }
+
+  const order = {
+    id: request.body.id || makeOrderId(),
+    ...orderPayload,
+    createdAt: request.body.createdAt || new Date().toISOString(),
+    paidAt: orderPayload.paymentStatus === "CONFIRMED" ? new Date().toISOString() : undefined,
+    createdBy: "owner",
+  };
+
+  await saveOrder(order);
+  return response.status(201).json(order);
 });
 
 app.get("/api/orders", async (request, response) => {
@@ -328,6 +385,46 @@ app.patch("/api/orders/:orderId/status", requireAdmin, async (request, response)
     return response.status(409).json({ error: "Pagamento ainda nao confirmado." });
   }
   return response.json(order);
+});
+
+app.patch("/api/admin/orders/:orderId", requireAdmin, async (request, response) => {
+  let blockedByPayment = false;
+  const order = await updateOrder(request.params.orderId, (current) => {
+    const next = normalizeAdminOrderPayload(request.body, current);
+    if (!orderStatuses.includes(next.status)) {
+      return current;
+    }
+    if (!paymentStatuses.includes(next.paymentStatus)) {
+      return current;
+    }
+
+    const paidIndex = orderStatuses.indexOf(paidStatus);
+    const selectedIndex = orderStatuses.indexOf(next.status);
+    if (selectedIndex > paidIndex && next.paymentStatus !== "CONFIRMED" && current.status !== paidStatus) {
+      blockedByPayment = true;
+      return current;
+    }
+
+    return {
+      ...current,
+      ...next,
+      paymentStatus: next.status === paidStatus ? "CONFIRMED" : next.paymentStatus,
+      paidAt: (next.status === paidStatus || next.paymentStatus === "CONFIRMED") && !current.paidAt
+        ? new Date().toISOString()
+        : current.paidAt,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+
+  if (!order) return response.status(404).json({ error: "Pedido nao encontrado." });
+  if (blockedByPayment) return response.status(409).json({ error: "Pagamento ainda nao confirmado." });
+  return response.json(order);
+});
+
+app.delete("/api/admin/orders/:orderId", requireAdmin, async (request, response) => {
+  const deleted = await deleteOrder(request.params.orderId);
+  if (!deleted) return response.status(404).json({ error: "Pedido nao encontrado." });
+  return response.json({ ok: true, order: deleted });
 });
 
 app.listen(port, () => {
