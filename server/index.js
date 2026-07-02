@@ -30,9 +30,21 @@ const ownerEmail = process.env.OWNER_EMAIL || "arcadecooficial@gmail.com";
 const ownerPassword = process.env.OWNER_PASSWORD || "";
 const adminSessionSecret = process.env.ADMIN_SESSION_SECRET || "arcade-dev-session-change-me";
 
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.has(origin)) return true;
+
+  try {
+    const { hostname } = new URL(origin);
+    return hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
+};
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    if (isAllowedOrigin(origin)) return callback(null, true);
     return callback(new Error("Origem nao permitida pelo CORS."));
   },
 }));
