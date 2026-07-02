@@ -6,12 +6,16 @@ import { createPixPayment, getMercadoPagoPayment, mercadoPagoIsConfigured } from
 import { capturePayPalOrder, createPayPalOrder, verifyPayPalWebhook } from "./paypal.js";
 import {
   deleteOrder,
+  deleteProduct,
   findOrderById,
   findOrderByMercadoPagoPaymentId,
   findOrderByPayPalId,
   readOrders,
+  readProducts,
   saveOrder,
+  saveProduct,
   updateOrder,
+  updateProduct,
 } from "./storage.js";
 
 const app = express();
@@ -52,6 +56,14 @@ app.use(cors({
 app.use(express.json({ limit: "1mb" }));
 
 const makeOrderId = () => `ARC-${Date.now().toString().slice(-6)}`;
+const makeProductId = (name = "produto") =>
+  name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48) || `produto-${Date.now()}`;
 
 const calculateTotal = (items = []) =>
   items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0);
@@ -85,6 +97,24 @@ const normalizeAdminOrderPayload = (payload = {}, currentOrder = {}) => {
     total: payload.total === "" || payload.total == null ? calculateTotal(items) : Number(payload.total),
     items,
     notes: String(payload.notes || currentOrder.notes || "").trim(),
+  };
+};
+
+const normalizeProductPayload = (payload = {}, currentProduct = {}) => {
+  const name = String(payload.name || currentProduct.name || "").trim();
+  const id = String(payload.id || currentProduct.id || makeProductId(name)).trim();
+
+  return {
+    id,
+    name,
+    category: String(payload.category || currentProduct.category || "Camisetas").trim(),
+    color: String(payload.color || currentProduct.color || "").trim(),
+    tag: String(payload.tag || currentProduct.tag || "Sob encomenda").trim(),
+    image: String(payload.image || currentProduct.image || "/images/polo-black.png").trim(),
+    price: Number(payload.price ?? currentProduct.price ?? 0),
+    oldPrice: Number(payload.oldPrice ?? currentProduct.oldPrice ?? payload.price ?? currentProduct.price ?? 0),
+    description: String(payload.description || currentProduct.description || "").trim(),
+    active: payload.active ?? currentProduct.active ?? true,
   };
 };
 
@@ -155,6 +185,11 @@ app.get("/api/health", (_request, response) => {
   response.json({ ok: true, service: "arcade-api" });
 });
 
+app.get("/api/products", async (_request, response) => {
+  const products = await readProducts();
+  response.json(products.filter((product) => product.active !== false));
+});
+
 app.post("/api/admin/login", (request, response) => {
   const { email, password } = request.body;
   if (!ownerPassword || !safeEqual(String(email || "").trim().toLowerCase(), ownerEmail.toLowerCase()) || !safeEqual(password, ownerPassword)) {
@@ -166,6 +201,42 @@ app.post("/api/admin/login", (request, response) => {
 
 app.get("/api/admin/orders", requireAdmin, async (_request, response) => {
   response.json(await readOrders());
+});
+
+app.get("/api/admin/products", requireAdmin, async (_request, response) => {
+  response.json(await readProducts());
+});
+
+app.post("/api/admin/products", requireAdmin, async (request, response) => {
+  const product = normalizeProductPayload(request.body);
+  if (!product.name || !product.price || !product.image) {
+    return response.status(400).json({ error: "Informe nome, preco e imagem do produto." });
+  }
+
+  const products = await readProducts();
+  const uniqueId = products.some((entry) => entry.id === product.id)
+    ? `${product.id}-${Date.now().toString().slice(-4)}`
+    : product.id;
+  const savedProduct = {
+    ...product,
+    id: uniqueId,
+    createdAt: new Date().toISOString(),
+  };
+
+  await saveProduct(savedProduct);
+  return response.status(201).json(savedProduct);
+});
+
+app.patch("/api/admin/products/:productId", requireAdmin, async (request, response) => {
+  const product = await updateProduct(request.params.productId, (current) => normalizeProductPayload(request.body, current));
+  if (!product) return response.status(404).json({ error: "Produto nao encontrado." });
+  return response.json(product);
+});
+
+app.delete("/api/admin/products/:productId", requireAdmin, async (request, response) => {
+  const product = await deleteProduct(request.params.productId);
+  if (!product) return response.status(404).json({ error: "Produto nao encontrado." });
+  return response.json({ ok: true, product });
 });
 
 app.post("/api/admin/orders", requireAdmin, async (request, response) => {

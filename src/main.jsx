@@ -8,6 +8,7 @@ const sizes = ["P", "M", "G", "GG"];
 const USERS_KEY = "arcade_users";
 const CURRENT_USER_KEY = "arcade_current_user";
 const ORDERS_KEY = "arcade_orders";
+const PRODUCTS_KEY = "arcade_products";
 const OWNER_TOKEN_KEY = "arcade_owner_token";
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 const productionApiBaseUrl = "https://arcade-api-sdxg.onrender.com";
@@ -31,7 +32,7 @@ const paymentStatusOptions = [
   { value: "CANCELLED", label: "Cancelado" },
 ];
 
-const products = [
+const defaultProducts = [
   {
     id: "ribbed-black",
     name: "Ribbed Black",
@@ -56,8 +57,38 @@ const products = [
   },
 ];
 
-const createOwnerOrderDraft = (order = null) => {
+const getProductById = (catalog, id) =>
+  catalog.find((entry) => entry.id === id) || defaultProducts.find((entry) => entry.id === id) || catalog[0] || defaultProducts[0];
+
+const createProductDraft = (product = null) => ({
+  id: product?.id || "",
+  name: product?.name || "",
+  category: product?.category || "Camisetas",
+  color: product?.color || "",
+  tag: product?.tag || "Sob encomenda",
+  image: product?.image || "/images/polo-black.png",
+  price: String(product?.price || 249.9),
+  oldPrice: String(product?.oldPrice || 299.9),
+  description: product?.description || "",
+  active: product?.active !== false,
+});
+
+const productDraftToPayload = (draft) => ({
+  id: draft.id || undefined,
+  name: capitalizeText(draft.name),
+  category: capitalizeText(draft.category),
+  color: capitalizeText(draft.color),
+  tag: draft.tag.trim(),
+  image: draft.image.trim(),
+  price: Number(draft.price || 0),
+  oldPrice: Number(draft.oldPrice || draft.price || 0),
+  description: draft.description.trim(),
+  active: draft.active,
+});
+
+const createOwnerOrderDraft = (order = null, catalog = defaultProducts) => {
   const firstItem = order?.items?.[0] || {};
+  const product = getProductById(catalog, firstItem.id);
   return {
     id: order?.id || "",
     userName: order?.userName || "",
@@ -67,16 +98,16 @@ const createOwnerOrderDraft = (order = null) => {
     paymentMethod: order?.paymentMethod || "PIX",
     paymentStatus: order?.paymentStatus || "WAITING_MANUAL_CONFIRMATION",
     status: order?.status || "Aguardando pagamento",
-    productId: firstItem.id || products[0].id,
+    productId: firstItem.id || product.id,
     size: firstItem.size || "M",
     qty: String(firstItem.qty || 1),
-    total: String(order?.total || products[0].price),
+    total: String(order?.total || product.price),
     notes: order?.notes || "",
   };
 };
 
-const ownerDraftToPayload = (draft) => {
-  const product = products.find((entry) => entry.id === draft.productId) || products[0];
+const ownerDraftToPayload = (draft, catalog = defaultProducts) => {
+  const product = getProductById(catalog, draft.productId);
   const qty = Math.max(1, Number(draft.qty || 1));
   const total = Number(draft.total || product.price * qty);
 
@@ -143,17 +174,17 @@ const formatDeliveryAddress = (delivery) => {
   return `${capitalizeText(info.street)}, ${info.number}${complement} - ${capitalizeText(info.neighborhood)}, ${capitalizeText(info.city)}/${info.state}, CEP ${info.cep}`;
 };
 
-const buildWhatsappUrl = (cart, user, orderId) => {
+const buildWhatsappUrl = (cart, user, orderId, catalog = defaultProducts) => {
   if (!cart.length) {
     return `https://wa.me/${phone}?text=${encodeURIComponent("Ola, quero encomendar uma peca da ARCADE.CO.")}`;
   }
 
   const lines = cart.map((item) => {
-    const product = products.find((entry) => entry.id === item.id);
+    const product = getProductById(catalog, item.id);
     return `- ${product.name} | tamanho ${item.size} | qtd ${item.qty} | ${formatBRL(product.price * item.qty)}`;
   });
   const total = cart.reduce((sum, item) => {
-    const product = products.find((entry) => entry.id === item.id);
+    const product = getProductById(catalog, item.id);
     return sum + product.price * item.qty;
   }, 0);
   const delivery = getDeliveryInfo(user);
@@ -283,7 +314,8 @@ function Header({ cartCount, currentUser, onCartOpen, onLogout }) {
   );
 }
 
-function HomePage() {
+function HomePage({ products }) {
+  const featuredProducts = products.slice(0, 2);
   return (
     <section className="home-page">
       <div className="store-hero">
@@ -299,14 +331,12 @@ function HomePage() {
       </div>
 
       <div className="home-categories">
-        <button type="button" onClick={() => goTo("produto/ribbed-black")}>
-          <img src="/images/polo-black.png" alt="Ribbed Black ARCADE.CO" />
-          <span>Ribbed Black</span>
-        </button>
-        <button type="button" onClick={() => goTo("produto/ribbed-white")}>
-          <img src="/images/polo-white.png" alt="Ribbed White ARCADE.CO" />
-          <span>Ribbed White</span>
-        </button>
+        {featuredProducts.map((product) => (
+          <button type="button" key={product.id} onClick={() => goTo(`produto/${product.id}`)}>
+            <img src={product.image} alt={`${product.name} ARCADE.CO`} />
+            <span>{product.name}</span>
+          </button>
+        ))}
       </div>
 
       <div className="atelier-strip">
@@ -398,7 +428,7 @@ function ProductCard({ product, onAdd }) {
   );
 }
 
-function ShopPage({ onAdd }) {
+function ShopPage({ onAdd, products }) {
   const [activeFilter, setActiveFilter] = useState("Todos");
 
   const filteredProducts = useMemo(() => {
@@ -406,7 +436,7 @@ function ShopPage({ onAdd }) {
     if (activeFilter === "Mais vendidos") return products.filter((product) => product.tag.includes("vendida"));
     if (activeFilter === "Limitados") return products.filter((product) => product.tag.includes("limitada"));
     return products.filter((product) => product.color === activeFilter);
-  }, [activeFilter]);
+  }, [activeFilter, products]);
 
   return (
     <section className="store-section page-shell">
@@ -432,9 +462,9 @@ function ShopPage({ onAdd }) {
   );
 }
 
-function ProductPage({ id, onAdd }) {
+function ProductPage({ id, onAdd, products }) {
   const [size, setSize] = useState("M");
-  const product = products.find((entry) => entry.id === id) || products[0];
+  const product = getProductById(products, id);
 
   return (
     <section className="product-page page-shell" aria-label={product.name}>
@@ -473,9 +503,9 @@ function ProductPage({ id, onAdd }) {
   );
 }
 
-function CartDrawer({ cart, currentUser, open, processingCheckout, onClose, onCheckout, onIncrease, onDecrease, onRemove }) {
+function CartDrawer({ cart, currentUser, products, open, processingCheckout, onClose, onCheckout, onIncrease, onDecrease, onRemove }) {
   const subtotal = cart.reduce((sum, item) => {
-    const product = products.find((entry) => entry.id === item.id);
+    const product = getProductById(products, item.id);
     return sum + product.price * item.qty;
   }, 0);
 
@@ -503,7 +533,7 @@ function CartDrawer({ cart, currentUser, open, processingCheckout, onClose, onCh
           )}
 
           {cart.map((item) => {
-            const product = products.find((entry) => entry.id === item.id);
+            const product = getProductById(products, item.id);
             return (
               <article className="cart-item" key={`${item.id}-${item.size}`}>
                 <img src={product.image} alt={product.name} />
@@ -717,7 +747,7 @@ function PixPaymentModal({ payment, onClose }) {
   );
 }
 
-function AccountPage({ currentUser, orders, onUpdateDelivery }) {
+function AccountPage({ currentUser, orders, products, onUpdateDelivery }) {
   const [deliveryForm, setDeliveryForm] = useState({
     name: currentUser?.name || "",
     phone: currentUser?.phone || "",
@@ -939,7 +969,7 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
               {order.paymentMethod && <p className="order-payment">Pagamento: {order.paymentMethod}</p>}
               <ul>
                 {order.items.map((item) => {
-                  const product = products.find((entry) => entry.id === item.id);
+                  const product = getProductById(products, item.id);
                   return <li key={`${order.id}-${item.id}-${item.size}`}>{product?.name || item.name} · {item.size} · qtd {item.qty}</li>;
                 })}
               </ul>
@@ -951,7 +981,7 @@ function AccountPage({ currentUser, orders, onUpdateDelivery }) {
   );
 }
 
-function OwnerOrderForm({ draft, mode, onChange, onCancel, onSubmit, saving }) {
+function OwnerOrderForm({ draft, mode, products, onChange, onCancel, onSubmit, saving }) {
   const updateDraft = (field, value) => onChange((current) => ({ ...current, [field]: value }));
 
   return (
@@ -1032,7 +1062,67 @@ function OwnerOrderForm({ draft, mode, onChange, onCancel, onSubmit, saving }) {
   );
 }
 
-function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onStatusChange, onCreateOrder, onUpdateOrder, onDeleteOrder }) {
+function OwnerProductForm({ draft, mode, onChange, onCancel, onSubmit, saving }) {
+  const updateDraft = (field, value) => onChange((current) => ({ ...current, [field]: value }));
+
+  return (
+    <form className="owner-editor" onSubmit={onSubmit}>
+      <div className="owner-editor-head">
+        <div>
+          <p>{mode === "create" ? "Novo produto" : "Editar produto"}</p>
+          <h2>{mode === "create" ? "Adicionar ao catalogo" : draft.name}</h2>
+        </div>
+        <button className="filter-button" type="button" onClick={onCancel}>Cancelar</button>
+      </div>
+
+      <div className="owner-editor-grid product-editor-grid">
+        <label>
+          Nome
+          <input value={draft.name} onChange={(event) => updateDraft("name", event.target.value)} placeholder="Nome do produto" />
+        </label>
+        <label>
+          Categoria
+          <input value={draft.category} onChange={(event) => updateDraft("category", event.target.value)} placeholder="Camisetas" />
+        </label>
+        <label>
+          Cor
+          <input value={draft.color} onChange={(event) => updateDraft("color", event.target.value)} placeholder="Preto, Branco..." />
+        </label>
+        <label>
+          Selo
+          <input value={draft.tag} onChange={(event) => updateDraft("tag", event.target.value)} placeholder="Mais vendida" />
+        </label>
+        <label>
+          Preco
+          <input type="number" min="0" step="0.01" value={draft.price} onChange={(event) => updateDraft("price", event.target.value)} />
+        </label>
+        <label>
+          Preco antigo
+          <input type="number" min="0" step="0.01" value={draft.oldPrice} onChange={(event) => updateDraft("oldPrice", event.target.value)} />
+        </label>
+        <label>
+          Imagem
+          <input value={draft.image} onChange={(event) => updateDraft("image", event.target.value)} placeholder="/images/polo-black.png ou URL" />
+        </label>
+        <label className="owner-switch">
+          <input type="checkbox" checked={draft.active} onChange={(event) => updateDraft("active", event.target.checked)} />
+          Produto ativo na loja
+        </label>
+      </div>
+
+      <label className="owner-full-field">
+        Descricao
+        <input value={draft.description} onChange={(event) => updateDraft("description", event.target.value)} placeholder="Descricao curta para a vitrine" />
+      </label>
+
+      <button className="add-button" type="submit" disabled={saving}>
+        {saving ? "Salvando..." : mode === "create" ? "Criar produto" : "Salvar produto"}
+      </button>
+    </form>
+  );
+}
+
+function OwnerPanelPage({ orders, products, ownerToken, onOwnerLogin, onOwnerLogout, onStatusChange, onCreateOrder, onUpdateOrder, onDeleteOrder, onCreateProduct, onUpdateProduct, onDeleteProduct }) {
   const [unlocked, setUnlocked] = useState(() => Boolean(ownerToken));
   const [credentials, setCredentials] = useState({ email: "", password: "" });
   const [query, setQuery] = useState("");
@@ -1042,8 +1132,11 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [editorMode, setEditorMode] = useState("");
-  const [orderDraft, setOrderDraft] = useState(createOwnerOrderDraft());
+  const [orderDraft, setOrderDraft] = useState(createOwnerOrderDraft(null, products));
   const [savingOrder, setSavingOrder] = useState(false);
+  const [productEditorMode, setProductEditorMode] = useState("");
+  const [productDraft, setProductDraft] = useState(createProductDraft());
+  const [savingProduct, setSavingProduct] = useState(false);
 
   useEffect(() => {
     setUnlocked(Boolean(ownerToken));
@@ -1070,13 +1163,13 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
   };
 
   const openCreateOrder = () => {
-    setOrderDraft(createOwnerOrderDraft());
+    setOrderDraft(createOwnerOrderDraft(null, products));
     setEditorMode("create");
     setError("");
   };
 
   const openEditOrder = (order) => {
-    setOrderDraft(createOwnerOrderDraft(order));
+    setOrderDraft(createOwnerOrderDraft(order, products));
     setEditorMode("edit");
     setError("");
   };
@@ -1085,7 +1178,7 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
     event.preventDefault();
     setSavingOrder(true);
     setError("");
-    const payload = ownerDraftToPayload(orderDraft);
+    const payload = ownerDraftToPayload(orderDraft, products);
     const result = editorMode === "create"
       ? await onCreateOrder(payload)
       : await onUpdateOrder(orderDraft.id, payload);
@@ -1097,7 +1190,7 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
     }
 
     setEditorMode("");
-    setOrderDraft(createOwnerOrderDraft());
+    setOrderDraft(createOwnerOrderDraft(null, products));
   };
 
   const confirmDeleteOrder = async (order) => {
@@ -1105,6 +1198,44 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
     if (!confirmed) return;
     const result = await onDeleteOrder(order.id);
     if (!result.ok) setError(result.error || "Nao foi possivel apagar o pedido.");
+  };
+
+  const openCreateProduct = () => {
+    setProductDraft(createProductDraft());
+    setProductEditorMode("create");
+    setError("");
+  };
+
+  const openEditProduct = (product) => {
+    setProductDraft(createProductDraft(product));
+    setProductEditorMode("edit");
+    setError("");
+  };
+
+  const submitProduct = async (event) => {
+    event.preventDefault();
+    setSavingProduct(true);
+    setError("");
+    const payload = productDraftToPayload(productDraft);
+    const result = productEditorMode === "create"
+      ? await onCreateProduct(payload)
+      : await onUpdateProduct(productDraft.id, payload);
+    setSavingProduct(false);
+
+    if (!result.ok) {
+      setError(result.error || "Nao foi possivel salvar o produto.");
+      return;
+    }
+
+    setProductEditorMode("");
+    setProductDraft(createProductDraft());
+  };
+
+  const confirmDeleteProduct = async (product) => {
+    const confirmed = window.confirm(`Apagar o produto ${product.name}? Ele sumira da vitrine.`);
+    if (!confirmed) return;
+    const result = await onDeleteProduct(product.id);
+    if (!result.ok) setError(result.error || "Nao foi possivel apagar o produto.");
   };
 
   const filteredOrders = orders.filter((order) => {
@@ -1233,12 +1364,53 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
         <OwnerOrderForm
           draft={orderDraft}
           mode={editorMode}
+          products={products}
           onChange={setOrderDraft}
           onCancel={() => setEditorMode("")}
           onSubmit={submitOwnerOrder}
           saving={savingOrder}
         />
       )}
+
+      <section className="owner-products-panel">
+        <div className="owner-products-head">
+          <div>
+            <p>Catalogo</p>
+            <h2>Produtos da loja</h2>
+            <span>Controle o que aparece na vitrine, precos, imagens e descricoes.</span>
+          </div>
+          <button className="filter-button" type="button" onClick={openCreateProduct}>Adicionar produto</button>
+        </div>
+
+        {productEditorMode && (
+          <OwnerProductForm
+            draft={productDraft}
+            mode={productEditorMode}
+            onChange={setProductDraft}
+            onCancel={() => setProductEditorMode("")}
+            onSubmit={submitProduct}
+            saving={savingProduct}
+          />
+        )}
+
+        <div className="owner-products-grid">
+          {products.map((product) => (
+            <article className={`owner-product-card ${product.active === false ? "is-inactive" : ""}`} key={product.id}>
+              <img src={product.image} alt={product.name} />
+              <div>
+                <span>{product.active === false ? "Inativo" : "Ativo"}</span>
+                <strong>{product.name}</strong>
+                <p>{product.description}</p>
+                <b>{formatBRL(product.price)}</b>
+              </div>
+              <div className="owner-product-actions">
+                <button className="filter-button" type="button" onClick={() => openEditProduct(product)}>Editar</button>
+                <button className="filter-button danger-button" type="button" onClick={() => confirmDeleteProduct(product)}>Apagar</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <div className="owner-orders">
         {!filteredOrders.length && <p className="form-message">Nenhum pedido encontrado.</p>}
@@ -1265,7 +1437,7 @@ function OwnerPanelPage({ orders, ownerToken, onOwnerLogin, onOwnerLogout, onSta
 
               <ul>
                 {order.items.map((item) => {
-                  const product = products.find((entry) => entry.id === item.id);
+                  const product = getProductById(products, item.id);
                   return <li key={`${order.id}-${item.id}-${item.size}`}>{product?.name || item.name} · tamanho {item.size} · qtd {item.qty}</li>;
                 })}
               </ul>
@@ -1313,6 +1485,7 @@ function App() {
   const [route, setRoute] = useState(getRoute);
   const [currentUser, setCurrentUser] = useState(() => readStorage(CURRENT_USER_KEY, null));
   const [orders, setOrders] = useState(() => readStorage(ORDERS_KEY, []));
+  const [products, setProducts] = useState(() => readStorage(PRODUCTS_KEY, defaultProducts));
   const [processingCheckout, setProcessingCheckout] = useState(false);
   const [ownerToken, setOwnerToken] = useState(() => readStorage(OWNER_TOKEN_KEY, ""));
   const [pixPayment, setPixPayment] = useState(null);
@@ -1321,6 +1494,23 @@ function App() {
     const onHashChange = () => setRoute(getRoute());
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/products`);
+        if (!response.ok) return;
+        const serverProducts = await response.json();
+        if (!serverProducts.length) return;
+        setProducts(serverProducts);
+        writeStorage(PRODUCTS_KEY, serverProducts);
+      } catch {
+        // Keeps the storefront usable with the bundled catalog.
+      }
+    };
+
+    loadProducts();
   }, []);
 
   useEffect(() => {
@@ -1439,6 +1629,23 @@ function App() {
     return { ok: true };
   };
 
+  const fetchOwnerProducts = async (token = ownerToken) => {
+    if (!token) return { ok: false, error: "Acesso do lojista expirado." };
+
+    const response = await fetch(`${API_BASE_URL}/api/admin/products`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      return { ok: false, error: data.error || "Nao foi possivel carregar os produtos." };
+    }
+
+    setProducts(data);
+    writeStorage(PRODUCTS_KEY, data);
+    return { ok: true };
+  };
+
   const ownerLogin = async (credentials) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
@@ -1457,7 +1664,9 @@ function App() {
 
       setOwnerToken(data.token);
       writeStorage(OWNER_TOKEN_KEY, data.token);
-      return fetchOwnerOrders(data.token);
+      const ordersResult = await fetchOwnerOrders(data.token);
+      const productsResult = await fetchOwnerProducts(data.token);
+      return ordersResult.ok ? productsResult : ordersResult;
     } catch {
       return { ok: false, error: "Servidor indisponivel. Inicie a API para acessar o painel." };
     }
@@ -1539,9 +1748,78 @@ function App() {
     }
   };
 
+  const createProduct = async (payload) => {
+    if (!ownerToken) return { ok: false, error: "Entre novamente no painel do lojista." };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/products`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${ownerToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) return { ok: false, error: data.error || "Nao foi possivel criar o produto." };
+
+      const nextProducts = [data, ...products.filter((product) => product.id !== data.id)];
+      setProducts(nextProducts);
+      writeStorage(PRODUCTS_KEY, nextProducts);
+      return { ok: true, product: data };
+    } catch {
+      return { ok: false, error: "Servidor indisponivel. Nao foi possivel criar o produto." };
+    }
+  };
+
+  const updateProduct = async (productId, payload) => {
+    if (!ownerToken) return { ok: false, error: "Entre novamente no painel do lojista." };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/products/${productId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${ownerToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) return { ok: false, error: data.error || "Nao foi possivel editar o produto." };
+
+      const nextProducts = products.map((product) => (product.id === productId ? data : product));
+      setProducts(nextProducts);
+      writeStorage(PRODUCTS_KEY, nextProducts);
+      return { ok: true, product: data };
+    } catch {
+      return { ok: false, error: "Servidor indisponivel. Nao foi possivel editar o produto." };
+    }
+  };
+
+  const deleteProduct = async (productId) => {
+    if (!ownerToken) return { ok: false, error: "Entre novamente no painel do lojista." };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/products/${productId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${ownerToken}` },
+      });
+      const data = await response.json();
+      if (!response.ok) return { ok: false, error: data.error || "Nao foi possivel apagar o produto." };
+
+      const nextProducts = products.filter((product) => product.id !== productId);
+      setProducts(nextProducts.length ? nextProducts : defaultProducts);
+      writeStorage(PRODUCTS_KEY, nextProducts.length ? nextProducts : defaultProducts);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Servidor indisponivel. Nao foi possivel apagar o produto." };
+    }
+  };
+
   useEffect(() => {
     if (route.page === "admin" && ownerToken) {
       fetchOwnerOrders(ownerToken);
+      fetchOwnerProducts(ownerToken);
     }
   }, [route.page, ownerToken]);
 
@@ -1563,7 +1841,7 @@ function App() {
     setProcessingCheckout(true);
     try {
       const enrichedItems = cart.map((item) => {
-        const product = products.find((entry) => entry.id === item.id);
+        const product = getProductById(products, item.id);
         return {
           ...item,
           name: product.name,
@@ -1592,7 +1870,7 @@ function App() {
         return;
       }
 
-      const manualPaymentWhatsappUrl = buildWhatsappUrl(cart, currentUser, data.order.id);
+      const manualPaymentWhatsappUrl = buildWhatsappUrl(cart, currentUser, data.order.id, products);
       const nextOrders = [data.order, ...orders.filter((order) => order.id !== data.order.id)];
       setOrders(nextOrders);
       writeStorage(ORDERS_KEY, nextOrders);
@@ -1664,15 +1942,16 @@ function App() {
   };
 
   const renderPage = () => {
-    if (route.page === "shop") return <ShopPage onAdd={addToCart} />;
-    if (route.page === "product") return <ProductPage id={route.id} onAdd={addToCart} />;
+    if (route.page === "shop") return <ShopPage products={products.filter((product) => product.active !== false)} onAdd={addToCart} />;
+    if (route.page === "product") return <ProductPage products={products.filter((product) => product.active !== false)} id={route.id} onAdd={addToCart} />;
     if (route.page === "about") return <AboutPage />;
     if (route.page === "login") return <AuthPage onAuth={loginUser} />;
-    if (route.page === "account") return <AccountPage currentUser={currentUser} orders={orders} onUpdateDelivery={updateDeliveryInfo} />;
+    if (route.page === "account") return <AccountPage currentUser={currentUser} orders={orders} products={products} onUpdateDelivery={updateDeliveryInfo} />;
     if (route.page === "admin") {
       return (
         <OwnerPanelPage
           orders={orders}
+          products={products}
           ownerToken={ownerToken}
           onOwnerLogin={ownerLogin}
           onOwnerLogout={ownerLogout}
@@ -1680,10 +1959,13 @@ function App() {
           onCreateOrder={createOwnerOrder}
           onUpdateOrder={updateOwnerOrder}
           onDeleteOrder={deleteOwnerOrder}
+          onCreateProduct={createProduct}
+          onUpdateProduct={updateProduct}
+          onDeleteProduct={deleteProduct}
         />
       );
     }
-    return <HomePage />;
+    return <HomePage products={products.filter((product) => product.active !== false)} />;
   };
 
   return (
@@ -1699,6 +1981,7 @@ function App() {
       <CartDrawer
         cart={cart}
         currentUser={currentUser}
+        products={products}
         processingCheckout={processingCheckout}
         open={cartOpen}
         onClose={() => setCartOpen(false)}
